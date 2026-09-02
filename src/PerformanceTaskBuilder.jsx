@@ -71,7 +71,7 @@ Return ONLY:
 }
 The tasks array must have exactly ${numQuestions} entries, with the extended_response one last.`;
 
-  const json = await callClaude(prompt, { maxTokens: 7000 });
+  const json = await callClaude(prompt, { maxTokens: 9000 });
   if (!json.tasks || !Array.isArray(json.tasks)) throw new Error("Could not build the performance task.");
   return json;
 }

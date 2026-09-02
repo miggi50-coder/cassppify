@@ -62,7 +62,14 @@ async function callClaude(content, { maxTokens = 4000 } = {}) {
   });
   if (!resp.ok) {
     if (resp.status === 429) throw new Error("This site is getting a lot of requests right now, please wait a minute and try again.");
-    throw new Error("Request failed (" + resp.status + ")");
+    let detail = "";
+    try {
+      const errJson = await resp.json();
+      detail = errJson?.error?.message || errJson?.error || JSON.stringify(errJson);
+    } catch (e) {
+      try { detail = await resp.text(); } catch (e2) { /* ignore */ }
+    }
+    throw new Error("Request failed (" + resp.status + ")" + (detail ? ": " + detail : ""));
   }
   const data = await resp.json();
   const text = (data.content || [])

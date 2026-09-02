@@ -4,7 +4,7 @@ import {
   readAsText, extractTextFromDocx, splitFromPDF,
   splitByNumbering, splitWithAI,
   convertAll, convertOne,
-  ItemVisual, renderMathText,
+  ItemVisual, renderMathText, downloadQTI,
 } from "./shared";
 
 const SAMPLE = `1. Solve for x: 3x - 7 = 20
@@ -185,6 +185,16 @@ export default function WorksheetConverter() {
     }
   };
 
+  const downloadCanvasQuiz = () => {
+    setError("");
+    try {
+      const items = questions.map((q) => ({ type: q.type, stem: q.stem, data: q.data }));
+      downloadQTI("CAASPPified Worksheet", items);
+    } catch (e) {
+      setError("Could not build the Canvas quiz file: " + (e.message || e));
+    }
+  };
+
   const startOver = () => {
     setStage("input");
     setRawText("");
@@ -331,7 +341,7 @@ export default function WorksheetConverter() {
                 </select>
                 {q.loading && <span style={{ fontSize: 12.5, color: C.muted }}>Regenerating...</span>}
               </div>
-              {q.rationale && <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>Why this format: {q.rationale}</div>}
+              {q.rationale && <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>Why this format: {renderMathText(q.rationale)}</div>}
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>{renderMathText(q.stem)}</div>
               <ItemVisual type={q.type} data={q.data} showAnswer={showAnswer} />
 
@@ -384,12 +394,15 @@ export default function WorksheetConverter() {
             <button onClick={downloadWord} style={{ padding: "10px 18px", borderRadius: 8, border: `1.5px solid ${C.teal}`, background: C.white, color: C.teal, fontWeight: 700, cursor: "pointer" }}>
               Download as Word
             </button>
+            <button onClick={downloadCanvasQuiz} style={{ padding: "10px 18px", borderRadius: 8, border: `1.5px solid ${C.deep}`, background: C.white, color: C.deep, fontWeight: 700, cursor: "pointer" }}>
+              Download for Canvas (QTI)
+            </button>
             <button onClick={startOver} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: "transparent", color: C.muted, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
               Start over
             </button>
           </div>
           <div className="no-print" style={{ fontSize: 12.5, color: C.muted, marginBottom: 16 }}>
-            If the Print button doesn't open a dialog, use your browser's own Print command (Ctrl+P or Cmd+P) instead, it uses this same layout. Word export approximates formatting, for an exact layout use Print and save as PDF.
+            If the Print button doesn't open a dialog, use your browser's own Print command (Ctrl+P or Cmd+P) instead, it uses this same layout. Word export approximates formatting, for an exact layout use Print and save as PDF. The Canvas file auto-grades Multiple Choice, Multi Select, Equation/Numeric, and Matching Tables; other formats import as manually-graded questions with the answer included for reference.
           </div>
 
           <div ref={printRef} className="print-area" style={{ display: "block" }}>

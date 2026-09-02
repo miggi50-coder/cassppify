@@ -56,11 +56,22 @@ function StimulusBlock({ task }) {
   );
 }
 
-function TaskQuestion({ t, index, total, showAnswer }) {
+function TaskQuestion({ t, index, total, showAnswer, onDelete }) {
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 16, background: "#fff" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>
-        QUESTION {index + 1} OF {total}{t.item_type === "extended_response" ? " \u00b7 EXTENDED RESPONSE" : ""}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>
+          QUESTION {index + 1} OF {total}{t.item_type === "extended_response" ? " \u00b7 EXTENDED RESPONSE" : ""}
+        </div>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            title="Delete this question"
+            style={{ marginLeft: "auto", border: "none", background: "transparent", color: "#B33", fontWeight: 700, fontSize: 13, cursor: "pointer", padding: "2px 4px" }}
+          >
+            Delete
+          </button>
+        )}
       </div>
       {t.item_type === "extended_response" ? (
         <RubricTask task={{ stem: t.stem, ...t.data }} showAnswer={showAnswer} />
@@ -209,6 +220,10 @@ export default function PerformanceTaskBuilder() {
     }
   };
 
+  const deleteTask = (index) => {
+    setTask((t) => ({ ...t, tasks: t.tasks.filter((_, i) => i !== index) }));
+  };
+
   const downloadCanvasQuiz = () => {
     setError("");
     try {
@@ -316,8 +331,11 @@ export default function PerformanceTaskBuilder() {
           {/* On-screen preview, respects the answer key toggle */}
           <div className="no-print">
             <StimulusBlock task={task} />
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, fontStyle: "italic" }}>
+              Heads up: some questions may reference an earlier answer ("Using your answer from Question 2..."). Deleting a question doesn't rewrite later ones, so check for that if you remove something from the middle.
+            </div>
             {task.tasks.map((t, i) => (
-              <TaskQuestion key={i} t={t} index={i} total={task.tasks.length} showAnswer={showAnswer} />
+              <TaskQuestion key={i} t={t} index={i} total={task.tasks.length} showAnswer={showAnswer} onDelete={() => deleteTask(i)} />
             ))}
           </div>
 

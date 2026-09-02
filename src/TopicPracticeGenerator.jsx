@@ -128,6 +128,10 @@ export default function TopicPracticeGenerator() {
     }
   }
 
+  function deleteProblem(id) {
+    setProblems((ps) => ps.filter((p) => p.id !== id));
+  }
+
   function downloadCanvasQuiz() {
     setError("");
     try {
@@ -311,6 +315,13 @@ export default function TopicPracticeGenerator() {
                     {ITEM_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
                   {p.loading && <span style={{ fontSize: 12.5, color: C.muted }}>Regenerating...</span>}
+                  <button
+                    onClick={() => deleteProblem(p.id)}
+                    title="Delete this problem"
+                    style={{ marginLeft: "auto", border: "none", background: "transparent", color: "#B33", fontWeight: 700, fontSize: 13, cursor: "pointer", padding: "2px 4px" }}
+                  >
+                    Delete
+                  </button>
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>{i + 1}. {renderMathText(p.stem)}</div>
                 <ItemVisual type={p.type} data={p.data} showAnswer={showAnswer} />

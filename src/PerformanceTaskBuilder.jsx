@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { C, ITEM_TYPES, SCHEMA_NOTE, callClaude, ItemVisual, typesBlock, renderMathText, DataTable, Graphing } from "./shared";
+import React, { useState, useMemo, useRef } from "react";
+import { C, ITEM_TYPES, SCHEMA_NOTE, callClaude, ItemVisual, typesBlock, renderMathText, DataTable, Graphing, downloadQTI } from "./shared";
 import { ALL_LESSONS } from "./topics";
 
 function RubricTask({ task, showAnswer }) {
@@ -28,6 +28,52 @@ function RubricTask({ task, showAnswer }) {
   );
 }
 
+function StimulusBlock({ task }) {
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20, background: "#fff" }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: C.navy, fontFamily: "Georgia, serif", marginBottom: 10 }}>{renderMathText(task.title)}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, marginBottom: 6 }}>STIMULUS</div>
+      <div style={{ fontSize: 14.5, lineHeight: 1.6, marginBottom: task.stimulus?.table || task.stimulus?.graph ? 14 : 0 }}>
+        {renderMathText(typeof task.stimulus === "string" ? task.stimulus : task.stimulus?.narrative)}
+      </div>
+      {task.stimulus?.table && (
+        <div style={{ marginBottom: task.stimulus?.graph ? 14 : 0 }}>
+          <DataTable headers={task.stimulus.table.headers} rows={task.stimulus.table.rows} />
+        </div>
+      )}
+      {task.stimulus?.graph && (
+        <div>
+          <Graphing {...task.stimulus.graph} showAnswer={true} />
+        </div>
+      )}
+      {task.classroom_activity && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, marginTop: 14, marginBottom: 6 }}>CLASSROOM ACTIVITY</div>
+          <div style={{ fontSize: 14, fontStyle: "italic", color: C.muted }}>{renderMathText(task.classroom_activity)}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TaskQuestion({ t, index, total, showAnswer }) {
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 16, background: "#fff" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>
+        QUESTION {index + 1} OF {total}{t.item_type === "extended_response" ? " \u00b7 EXTENDED RESPONSE" : ""}
+      </div>
+      {t.item_type === "extended_response" ? (
+        <RubricTask task={{ stem: t.stem, ...t.data }} showAnswer={showAnswer} />
+      ) : (
+        <>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>{renderMathText(t.stem)}</div>
+          <ItemVisual type={t.item_type} data={t.data} showAnswer={showAnswer} />
+        </>
+      )}
+    </div>
+  );
+}
+
 async function generatePerformanceTask(lessons, numQuestions, feedback) {
   const feedbackBlock = feedback && feedback.trim()
     ? `\nAdditional instructions from the teacher, follow carefully: ${feedback.trim()}\n`
@@ -38,9 +84,11 @@ async function generatePerformanceTask(lessons, numQuestions, feedback) {
 
 Real math performance tasks have three parts: a stimulus (the material students read and use), an optional classroom activity that introduces it, and a task set of 4 to 6 connected items that all draw on that same stimulus, usually ending in a written justification item scored with a rubric.
 
+The task must be entirely self-contained and ready to hand directly to a student with no teacher involved in interpreting it. Never write anything telling the student to ask their teacher, discuss with their teacher, or wait for the teacher to explain something, and never write a classroom_activity that is required before students can answer the task questions. If you include a classroom_activity, it must be a genuinely optional warm-up, and the task questions must be fully answerable without it, using only the stimulus itself. Everything a student needs to answer every question, including reading any table or graph, must be understandable from the stimulus and questions alone.
+
 The stimulus is the part teachers most often get wrong when writing their own tasks: it is very rarely just a paragraph. Real Smarter Balanced math stimuli are grounded in actual data, most often a table of realistic numbers, and frequently a graph as well, that students must read and use across multiple questions, not just narrative description. Build the stimulus the same way:
 - Always include "narrative": one to two sentences of scenario framing, kept short since the data itself is the substance.
-- Decide independently, based on what genuinely fits these specific standards, whether to include a "table", a "graph", both, or neither. Real Smarter Balanced stimuli vary a lot: some are table only, some are graph only, some are a scenario with a few numbers embedded directly in the narrative and no visual at all, and some do use both. Do not default to including both every time, that becomes repetitive and stops looking like a real range of tasks. If you include "table": {"headers": [...], "rows": [[...], ...]} with realistic numbers. If you include "graph": {"xMin":..., "xMax":..., "yMin":..., "yMax":..., "points": [{"x":..,"y":..}, ...], "lineLabel": "..."}. Set either to null if it does not genuinely earn its place for this specific scenario.
+- Decide independently, based on what genuinely fits these specific standards, whether to include a "table", a "graph", both, or neither. Real Smarter Balanced stimuli vary a lot: some are table only, some are graph only, some are a scenario with a few numbers embedded directly in the narrative and no visual at all, and some do use both. Do not default to including both every time, that becomes repetitive and stops looking like a real range of tasks. If you include "table": {"headers": [...], "rows": [[...], ...]} with realistic numbers. If you include "graph": {"xMin":..., "xMax":..., "yMin":..., "yMax":..., "points": [{"x":..,"y":..}, ...], "lineLabel": "...", "xLabel": "what the x-axis measures, with units", "yLabel": "what the y-axis measures, with units"}. The graph renders with a labeled scale and axis titles, so always give real, specific xLabel and yLabel text (not just "x" and "y") whenever the scenario has real units. Set table and/or graph to null if it does not genuinely earn its place for this specific scenario.
 - If you do include a table and/or graph, at least two of the task questions must explicitly reference it (e.g., "Using the table above...", "Based on the graph..."). If you decide neither earns its place here, build the questions around the numbers embedded in the narrative instead.
 
 Base the task on these standards and lessons, weaving them together into ONE coherent real world scenario grounded in that shared data:
@@ -86,6 +134,7 @@ export default function PerformanceTaskBuilder() {
   const [busyLabel, setBusyLabel] = useState("");
   const [error, setError] = useState("");
   const [showAnswer, setShowAnswer] = useState(false);
+  const printRef = useRef(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -121,9 +170,64 @@ export default function PerformanceTaskBuilder() {
     }
   }
 
+  const buildExportHTML = () => {
+    const node = printRef.current;
+    if (!node) return null;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${task?.title || "Performance Task"}</title>
+<style>
+  body { font-family: Calibri, 'Segoe UI', system-ui, sans-serif; color: #1A1A2E; padding: 28px; max-width: 900px; margin: 0 auto; }
+  table { border-collapse: collapse; }
+  h2 { font-family: Georgia, serif; color: ${C.navy}; }
+  @media print { .page-break { page-break-before: always; } }
+</style>
+</head><body>${node.innerHTML}</body></html>`;
+  };
+
+  const doPrint = () => {
+    setError("");
+    try {
+      window.print();
+    } catch (e) {
+      setError("This environment doesn't allow triggering print automatically. Use your browser's own Print command (Ctrl+P or Cmd+P) instead, it uses the same layout shown below.");
+    }
+  };
+
+  const downloadWord = () => {
+    setError("");
+    try {
+      const html = buildExportHTML();
+      if (!html) return;
+      const dataUri = "data:application/msword;charset=utf-8," + encodeURIComponent(html);
+      const a = document.createElement("a");
+      a.href = dataUri;
+      a.download = (task?.title ? task.title.replace(/[^a-z0-9]+/gi, "_") : "Performance_Task") + ".doc";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      setError("Could not download a Word file in this environment. Use Print and choose Save as PDF instead.");
+    }
+  };
+
+  const downloadCanvasQuiz = () => {
+    setError("");
+    try {
+      const items = task.tasks.map((t) => ({ type: t.item_type, stem: t.stem, data: t.data }));
+      downloadQTI(task.title || "Performance Task", items, task.stimulus);
+    } catch (e) {
+      setError("Could not build the Canvas quiz file: " + (e.message || e));
+    }
+  };
+
   return (
     <div style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif", color: "#1A1A2E", maxWidth: 980, margin: "0 auto", padding: "0 16px 60px" }}>
-      <div style={{ background: C.navy, color: "#fff", padding: "22px 24px", borderRadius: 12, margin: "20px 0" }}>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .print-area { display: block !important; }
+        }
+      `}</style>
+      <div className="no-print" style={{ background: C.navy, color: "#fff", padding: "22px 24px", borderRadius: 12, margin: "20px 0" }}>
         <div style={{ fontSize: 12, letterSpacing: 1, fontWeight: 700, color: "#9FC3D9" }}>CAASPP DEEP DIVE TOOLKIT</div>
         <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", marginTop: 4 }}>Performance Task Builder</div>
         <div style={{ fontSize: 14, color: "#CADCFC", marginTop: 4 }}>
@@ -188,52 +292,49 @@ export default function PerformanceTaskBuilder() {
 
       {task && (
         <div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+          <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={doPrint} style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: C.deep, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                Print / Save as PDF
+              </button>
+              <button onClick={downloadWord} style={{ padding: "9px 16px", borderRadius: 8, border: `1.5px solid ${C.teal}`, background: "#fff", color: C.teal, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                Download as Word
+              </button>
+              <button onClick={downloadCanvasQuiz} style={{ padding: "9px 16px", borderRadius: 8, border: `1.5px solid ${C.deep}`, background: "#fff", color: C.deep, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                Download for Canvas (QTI)
+              </button>
+            </div>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: C.navy }}>
               <input type="checkbox" checked={showAnswer} onChange={(e) => setShowAnswer(e.target.checked)} />
               Show answer key
             </label>
           </div>
-
-          <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20, background: "#fff" }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: C.navy, fontFamily: "Georgia, serif", marginBottom: 10 }}>{task.title}</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, marginBottom: 6 }}>STIMULUS</div>
-            <div style={{ fontSize: 14.5, lineHeight: 1.6, marginBottom: task.stimulus?.table || task.stimulus?.graph ? 14 : 0 }}>
-              {renderMathText(typeof task.stimulus === "string" ? task.stimulus : task.stimulus?.narrative)}
-            </div>
-            {task.stimulus?.table && (
-              <div style={{ marginBottom: task.stimulus?.graph ? 14 : 0 }}>
-                <DataTable headers={task.stimulus.table.headers} rows={task.stimulus.table.rows} />
-              </div>
-            )}
-            {task.stimulus?.graph && (
-              <div>
-                <Graphing {...task.stimulus.graph} showAnswer={true} />
-              </div>
-            )}
-            {task.classroom_activity && (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, marginTop: 14, marginBottom: 6 }}>CLASSROOM ACTIVITY</div>
-                <div style={{ fontSize: 14, fontStyle: "italic", color: C.muted }}>{renderMathText(task.classroom_activity)}</div>
-              </>
-            )}
+          <div className="no-print" style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+            If Print doesn't open a dialog, use Ctrl+P or Cmd+P instead, it uses this same layout. The Canvas file auto-grades every question type except the extended response and any drag/hot spot/graph items, which import as manually-graded questions with the answer included for reference.
           </div>
 
-          {task.tasks.map((t, i) => (
-            <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 16, background: "#fff" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>
-                QUESTION {i + 1} OF {task.tasks.length}{t.item_type === "extended_response" ? " \u00b7 EXTENDED RESPONSE" : ""}
-              </div>
-              {t.item_type === "extended_response" ? (
-                <RubricTask task={{ stem: t.stem, ...t.data }} showAnswer={showAnswer} />
-              ) : (
-                <>
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>{renderMathText(t.stem)}</div>
-                  <ItemVisual type={t.item_type} data={t.data} showAnswer={showAnswer} />
-                </>
-              )}
+          {/* On-screen preview, respects the answer key toggle */}
+          <div className="no-print">
+            <StimulusBlock task={task} />
+            {task.tasks.map((t, i) => (
+              <TaskQuestion key={i} t={t} index={i} total={task.tasks.length} showAnswer={showAnswer} />
+            ))}
+          </div>
+
+          {/* Print / export version: student copy, then a forced answer key section */}
+          <div ref={printRef} className="print-area" style={{ display: "none" }}>
+            <StimulusBlock task={task} />
+            {task.tasks.map((t, i) => (
+              <TaskQuestion key={i} t={t} index={i} total={task.tasks.length} showAnswer={false} />
+            ))}
+            <div className="page-break" style={{ pageBreakBefore: "always", marginTop: 30 }}>
+              <h2 style={{ fontFamily: "Georgia, serif", color: C.navy }}>Answer Key</h2>
+              <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
+              {task.tasks.map((t, i) => (
+                <TaskQuestion key={i} t={t} index={i} total={task.tasks.length} showAnswer={true} />
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>

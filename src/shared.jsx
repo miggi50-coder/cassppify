@@ -960,6 +960,276 @@ function containsMathNotation(text) {
 // HTML in the question. This gives a real stacked fraction, radical, and
 // superscript/subscript in the actual Canvas quiz, instead of the flattened
 // "(3)/(2)" plain-text fallback.
+
+// ---------------- MathML generation for QTI/Canvas export ----------------
+// Canvas's own math editor converts LaTeX to MathML and renders it with
+// MathJax -- the same rendering engine used across Canvas, including New
+// Quizzes. MathJax typesets MathML with its own internal layout engine,
+// completely independent of the surrounding page's CSS, which is exactly
+// what kept breaking hand-rolled nested HTML (Canvas's own CSS clipping it)
+// and hand-rolled inline images (Canvas's sanitizer stripping data: URIs).
+// Verified against the real mathjax-full npm package (the actual library
+// Canvas uses), not assumed -- see the conversation history for the render
+// tests this was checked against.
+// Converts our internal notation (frac{}/sqrt[n]{}/^{}/_{}) into proper
+// MathML markup, so Canvas's own MathJax engine handles the actual visual
+// rendering instead of us guessing at CSS that Canvas's surrounding page
+// might clip or strip. Built as a proper node tree (matching the SVG
+// engine's approach) rather than string markers + regex, so a sup/sub
+// always attaches to exactly the token it followed, by construction.
+
+function readBraced(str, openBraceIdx) {
+  let depth = 0;
+  for (let j = openBraceIdx; j < str.length; j++) {
+    if (str[j] === "{") depth++;
+    else if (str[j] === "}") {
+      depth--;
+      if (depth === 0) return [str.slice(openBraceIdx + 1, j), j + 1];
+    }
+  }
+  return [str.slice(openBraceIdx + 1), str.length];
+}
+const simpleTokenRe = /^-?[A-Za-z0-9]+/;
+
+function escXml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ---- Tokenize a plain-text run into individual MathML leaf tokens ----
+function tokenizePlainNodes(str) {
+  const nodes = [];
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    if (/[0-9.]/.test(ch)) {
+      const m = /^[0-9]+(\.[0-9]+)?/.exec(str.slice(i));
+      nodes.push({ t: "mn", s: m[0] });
+      i += m[0].length;
+      continue;
+    }
+    if (/[A-Za-z]/.test(ch)) {
+      const m = /^[A-Za-z]+/.exec(str.slice(i));
+      nodes.push({ t: "mi", s: m[0] });
+      i += m[0].length;
+      continue;
+    }
+    if ("+-=<>".includes(ch)) {
+      let op = ch;
+      if (ch === "<" && str[i + 1] === "=") { op = "\u2264"; i++; }
+      if (ch === ">" && str[i + 1] === "=") { op = "\u2265"; i++; }
+      nodes.push({ t: "mo", s: op });
+      i++;
+      continue;
+    }
+    if (ch === "(" || ch === ")") { nodes.push({ t: "mo", s: ch }); i++; continue; }
+    nodes.push({ t: "mtext", s: ch });
+    i++;
+  }
+  return nodes;
+}
+
+// ---- Parse "frac{}/sqrt[n]{}/^{}/_{}" notation into a node tree ----
+// Node types: {t:"mn"/"mi"/"mo"/"mtext", s}, {t:"frac", num, den},
+// {t:"sqrt", index, content}, {t:"sup"/"sub", base, exp} (base is the
+// single preceding node this attaches to).
+function parse(str) {
+  const flat = [];
+  let i = 0;
+  while (i < str.length) {
+    if (str.startsWith("sqrt[", i)) {
+      const closeBracket = str.indexOf("]", i);
+      if (closeBracket !== -1 && str[closeBracket + 1] === "{") {
+        const idxStr = str.slice(i + 5, closeBracket);
+        const [content, next] = readBraced(str, closeBracket + 1);
+        flat.push({ t: "sqrt", index: idxStr, content: parse(content) });
+        i = next;
+        continue;
+      }
+    }
+    if (str.startsWith("sqrt{", i)) {
+      const [content, next] = readBraced(str, i + 4);
+      flat.push({ t: "sqrt", index: null, content: parse(content) });
+      i = next;
+      continue;
+    }
+    if (str.startsWith("frac{", i)) {
+      const [num, afterNum] = readBraced(str, i + 4);
+      if (str[afterNum] === "{") {
+        const [den, afterDen] = readBraced(str, afterNum);
+        flat.push({ t: "frac", num: parse(num), den: parse(den) });
+        i = afterDen;
+        continue;
+      }
+    }
+    if (str[i] === "^" && str[i + 1] === "{") {
+      const [content, next] = readBraced(str, i + 1);
+      const base = flat.pop() || { t: "mtext", s: "" };
+      flat.push({ t: "sup", base, exp: parse(content) });
+      i = next;
+      continue;
+    }
+    if (str[i] === "_" && str[i + 1] === "{") {
+      const [content, next] = readBraced(str, i + 1);
+      const base = flat.pop() || { t: "mtext", s: "" };
+      flat.push({ t: "sub", base, exp: parse(content) });
+      i = next;
+      continue;
+    }
+    if (str[i] === "^" && /[A-Za-z0-9-]/.test(str[i + 1] || "")) {
+      const m = simpleTokenRe.exec(str.slice(i + 1));
+      if (m) {
+        const base = flat.pop() || { t: "mtext", s: "" };
+        flat.push({ t: "sup", base, exp: tokenizePlainNodes(m[0]) });
+        i = i + 1 + m[0].length;
+        continue;
+      }
+    }
+    if (str[i] === "_" && /[A-Za-z0-9-]/.test(str[i + 1] || "")) {
+      const m = simpleTokenRe.exec(str.slice(i + 1));
+      if (m) {
+        const base = flat.pop() || { t: "mtext", s: "" };
+        flat.push({ t: "sub", base, exp: tokenizePlainNodes(m[0]) });
+        i = i + 1 + m[0].length;
+        continue;
+      }
+    }
+    const markers = ["sqrt[", "sqrt{", "frac{"];
+    let next = str.length;
+    markers.forEach((m) => { const idx = str.indexOf(m, i); if (idx !== -1) next = Math.min(next, idx); });
+    for (let j = i; j < str.length; j++) { if (str[j] === "^" || str[j] === "_") { next = Math.min(next, j); break; } }
+    const chunk = next === i ? str[i] : str.slice(i, next);
+    flat.push(...tokenizePlainNodes(chunk));
+    i = next === i ? i + 1 : next;
+  }
+  return flat;
+}
+
+// ---- Render a node tree to a MathML string ----
+function renderNodes(nodes) {
+  return nodes.map(renderNode).join("");
+}
+function renderNode(node) {
+  if (node.t === "mn" || node.t === "mi" || node.t === "mo" || node.t === "mtext") {
+    return `<${node.t}>${escXml(node.s)}</${node.t}>`;
+  }
+  if (node.t === "frac") {
+    return `<mfrac><mrow>${renderNodes(node.num)}</mrow><mrow>${renderNodes(node.den)}</mrow></mfrac>`;
+  }
+  if (node.t === "sqrt") {
+    if (node.index) {
+      return `<mroot><mrow>${renderNodes(node.content)}</mrow><mn>${escXml(node.index)}</mn></mroot>`;
+    }
+    return `<msqrt><mrow>${renderNodes(node.content)}</mrow></msqrt>`;
+  }
+  if (node.t === "sup") {
+    return `<msup><mrow>${renderNode(node.base)}</mrow><mrow>${renderNodes(node.exp)}</mrow></msup>`;
+  }
+  if (node.t === "sub") {
+    return `<msub><mrow>${renderNode(node.base)}</mrow><mrow>${renderNodes(node.exp)}</mrow></msub>`;
+  }
+  return "";
+}
+
+function buildMathMLBlock(text) {
+  const nodes = parse(text);
+  return `<math xmlns="http://www.w3.org/1998/Math/MathML">${renderNodes(nodes)}</math>`;
+}
+
+
+// Turns our internal notation into MathML wrapped in HTML, mixed with plain
+// text for any surrounding prose (a stem's sentence, for example). Pure-math
+// strings (answer options, which are never mixed with English words) become
+// one <math> block; sentences get only their math sub-expressions wrapped,
+// so prose doesn't get accidentally italicized as if it were a variable.
+function looksLikePureMath(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") depth--;
+    else if (text[i] === " " && depth === 0) return false;
+  }
+  return true;
+}
+
+function mathTextToMathHTML(text) {
+  if (!text || typeof text !== "string") return "";
+  text = cleanStrayLatex(text);
+  if (!containsMathNotation(text)) return xmlEscape(text);
+
+  if (looksLikePureMath(text)) {
+    return buildMathMLBlock(text);
+  }
+
+  // Mixed content: walk the text, and whenever a math construct is found,
+  // emit a small self-contained <math> island for it (including the base
+  // token immediately before a ^ or _, the same way a person would read
+  // "x^2" as one unit) while everything else stays plain escaped text.
+  function readBracedTop(str, openBraceIdx) {
+    let depth = 0;
+    for (let j = openBraceIdx; j < str.length; j++) {
+      if (str[j] === "{") depth++;
+      else if (str[j] === "}") {
+        depth--;
+        if (depth === 0) return [str.slice(openBraceIdx + 1, j), j + 1];
+      }
+    }
+    return [str.slice(openBraceIdx + 1), str.length];
+  }
+  const baseTokenRe = /[A-Za-z0-9]$/;
+  const simpleExpRe = /^-?[A-Za-z0-9]+/;
+
+  let out = "";
+  let plainBuffer = "";
+  let i = 0;
+  function flushPlain() {
+    if (plainBuffer) { out += xmlEscape(plainBuffer); plainBuffer = ""; }
+  }
+  while (i < text.length) {
+    if (text.startsWith("sqrt[", i) || text.startsWith("sqrt{", i) || text.startsWith("frac{", i)) {
+      flushPlain();
+      const start = i;
+      if (text.startsWith("sqrt[", i)) {
+        const closeBracket = text.indexOf("]", i);
+        const [, next] = readBracedTop(text, closeBracket + 1);
+        i = next;
+      } else if (text.startsWith("sqrt{", i)) {
+        const [, next] = readBracedTop(text, i + 4);
+        i = next;
+      } else {
+        const [, afterNum] = readBracedTop(text, i + 4);
+        const [, afterDen] = readBracedTop(text, afterNum);
+        i = afterDen;
+      }
+      out += buildMathMLBlock(text.slice(start, i));
+      continue;
+    }
+    if ((text[i] === "^" || text[i] === "_") && (text[i + 1] === "{" || /[A-Za-z0-9-]/.test(text[i + 1] || ""))) {
+      // Pull the base token off the end of the plain-text buffer so it
+      // becomes part of the same math island as the exponent/subscript.
+      const baseMatch = /[A-Za-z0-9]+$/.exec(plainBuffer);
+      const base = baseMatch ? baseMatch[0] : "";
+      plainBuffer = base ? plainBuffer.slice(0, -base.length) : plainBuffer;
+      flushPlain();
+      let exprEnd;
+      if (text[i + 1] === "{") {
+        const [, next] = readBracedTop(text, i + 1);
+        exprEnd = next;
+      } else {
+        const m = simpleExpRe.exec(text.slice(i + 1));
+        exprEnd = i + 1 + (m ? m[0].length : 1);
+      }
+      out += buildMathMLBlock(base + text.slice(i, exprEnd));
+      i = exprEnd;
+      continue;
+    }
+    plainBuffer += text[i];
+    i++;
+  }
+  flushPlain();
+  return out;
+}
+
 function mathTextToHTML(text, compact) {
   if (!text || typeof text !== "string") return "";
   text = cleanStrayLatex(text);
@@ -1316,7 +1586,7 @@ function mathTextToImgTag(text, fontSize) {
 // narrative text (most of a Performance Task stimulus) stays as normal,
 // lightweight, accessible HTML text.
 function mathAwareHTML(text) {
-  if (containsMathNotation(text)) return mathTextToHTML(text);
+  if (containsMathNotation(text)) return mathTextToMathHTML(text);
   return xmlEscape(String(text || ""));
 }
 
@@ -1455,7 +1725,7 @@ function qtiMeta(type, points) {
 
 function qtiMaterial(text) {
   if (containsMathNotation(text)) {
-    return `<material><mattext texttype="text/html"><![CDATA[${mathTextToHTML(text)}]]></mattext></material>`;
+    return `<material><mattext texttype="text/html"><![CDATA[${mathTextToMathHTML(text)}]]></mattext></material>`;
   }
   return `<material><mattext texttype="text/plain">${xmlEscape(text)}</mattext></material>`;
 }
@@ -1696,7 +1966,34 @@ ${stimulusItemXml}${itemXml}
 }
 
 function downloadQTI(title, items, stimulus) {
-  const zipBytes = buildQTIPackage(title, items, stimulus);
+  // Canvas's Matching question type renders its answer choices as a native
+  // browser dropdown (<select>/<option>), and no browser has ever supported
+  // rendering formatted math -- or any HTML/MathML -- inside a dropdown
+  // option; it only ever displays literal text. That's a structural limit
+  // of the question type itself, not something any QTI content can work
+  // around. So Matching items are excluded from the Canvas export
+  // specifically (they're unaffected in the Word/PDF export and the
+  // on-screen preview, where this constraint doesn't apply), and the
+  // teacher is told plainly what was left out and why.
+  const matchingCount = (items || []).filter((it) => it.type === "matching_tables").length;
+  const exportItems = (items || []).filter((it) => it.type !== "matching_tables");
+
+  if (matchingCount > 0) {
+    const noun = matchingCount === 1 ? "question" : "questions";
+    const pronoun = matchingCount === 1 ? "it" : "them";
+    window.alert(
+      `${matchingCount} Matching ${noun} ${matchingCount === 1 ? "was" : "were"} left out of this Canvas file.\n\n` +
+      `Canvas's Matching question type shows its answer choices in a plain dropdown, which can't display formatted math no matter what -- that's a Canvas limitation, not something this export can fix.\n\n` +
+      `Use the Word or PDF version of this set for ${pronoun}, or swap in a different question type next time.`
+    );
+  }
+
+  if (exportItems.length === 0) {
+    window.alert("Every question in this set was a Matching question, so there's nothing left to export to Canvas. Use the Word or PDF version instead, or add some non-Matching questions to this set.");
+    return;
+  }
+
+  const zipBytes = buildQTIPackage(title, exportItems, stimulus);
   const base64 = arrayBufferToBase64(zipBytes.buffer);
   const dataUri = "data:application/zip;base64," + base64;
   const filename = (title || "quiz").replace(/[^a-zA-Z0-9 _-]/g, "").trim().replace(/\s+/g, "_") + "_QTI.zip";

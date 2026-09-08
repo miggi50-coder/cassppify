@@ -1,0 +1,60 @@
+// Static practice bank -- Target E: Write expressions in equivalent forms to
+// solve problems.
+// 5 variations of each allowed item type (multiple_choice, equation_numeric,
+// hot_spot) per Evidence Required statement.
+
+export const TARGET_BANK_E = {
+  "1": [
+    { type: "multiple_choice", stem: "The quadratic x^{2} - 5x + 6 factors as (x-2)(x-3). What are its zeros?", data: { options: [{id:"A",text:"x = 2 and x = 3"},{id:"B",text:"x = -2 and x = -3"},{id:"C",text:"x = 5 and x = 6"},{id:"D",text:"x = -5 and x = 6"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "The factored form (x+2)(x-3) directly reveals which feature of the function it defines?", data: { options: [{id:"A",text:"Its zeros are x=-2 and x=3"},{id:"B",text:"Its maximum value"},{id:"C",text:"Its y-intercept only"},{id:"D",text:"Its domain is restricted"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Why is factored form useful for finding the zeros of a quadratic function?", data: { options: [{id:"A",text:"A product equals zero only when at least one factor equals zero"},{id:"B",text:"Factored form always shows the vertex"},{id:"C",text:"Factored form is always positive"},{id:"D",text:"Factored form removes the need for any further work"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "The quadratic x^{2} - x - 6 factors as (x-3)(x+2). What are its zeros?", data: { options: [{id:"A",text:"x = 3 and x = -2"},{id:"B",text:"x = -3 and x = 2"},{id:"C",text:"x = 1 and x = -6"},{id:"D",text:"x = 6"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "A quadratic function is written as f(x) = (x-4)(x+1). Which x-value is NOT a zero of f?", data: { options: [{id:"A",text:"x = 0"},{id:"B",text:"x = 4"},{id:"C",text:"x = -1"},{id:"D",text:"Both x=4 and x=-1 are zeros"}], correctId: "A" } },
+    { type: "equation_numeric", stem: "Factor x^{2} - 4 and use the factored form to find its positive zero.", data: { answerLabel: "Positive zero: x =", correctAnswer: "2" } },
+    { type: "equation_numeric", stem: "The quadratic x^{2}-5x+6 factors as (x-2)(x-3). What is the larger zero?", data: { answerLabel: "Larger zero: x =", correctAnswer: "3" } },
+    { type: "equation_numeric", stem: "Factor x^{2}-x-6 and find its negative zero.", data: { answerLabel: "Negative zero: x =", correctAnswer: "-2" } },
+    { type: "equation_numeric", stem: "A quadratic factors as (x-7)(x+1). Find the sum of its two zeros.", data: { answerLabel: "Sum of zeros =", correctAnswer: "6" } },
+    { type: "equation_numeric", stem: "A quadratic factors as (x-5)(x-5). How many distinct real zeros does it have?", data: { answerLabel: "Number of distinct zeros =", correctAnswer: "1" } },
+    { type: "hot_spot", stem: "The quadratic x^{2}-4 factors as (x-2)(x+2). Mark one of its zeros on the number line.", data: { lineMin: -5, lineMax: 5, correctValue: 2 } },
+    { type: "hot_spot", stem: "The quadratic x^{2}-5x+6 factors as (x-2)(x-3). Mark the smaller zero on the number line.", data: { lineMin: -2, lineMax: 6, correctValue: 2 } },
+    { type: "hot_spot", stem: "The quadratic x^{2}-x-6 factors as (x-3)(x+2). Mark the negative zero on the number line.", data: { lineMin: -5, lineMax: 5, correctValue: -2 } },
+    { type: "hot_spot", stem: "A quadratic factors as (x-1)(x-9). Mark the midpoint between its two zeros (the x-coordinate of the vertex).", data: { lineMin: -2, lineMax: 12, correctValue: 5 } },
+    { type: "hot_spot", stem: "A quadratic factors as x(x-8). Mark one of its zeros on the number line.", data: { lineMin: -2, lineMax: 10, correctValue: 0 } },
+  ],
+
+  "2": [
+    { type: "multiple_choice", stem: "Completing the square on x^{2}-6x+5 gives (x-3)^{2}-4. What does this reveal about the function?", data: { options: [{id:"A",text:"Its minimum value is -4, at x=3"},{id:"B",text:"Its maximum value is -4"},{id:"C",text:"Its zeros are x=3 and x=-4"},{id:"D",text:"It has no minimum or maximum"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Vertex form is useful for a quadratic because it directly reveals:", data: { options: [{id:"A",text:"The minimum or maximum value and where it occurs"},{id:"B",text:"The zeros of the function only"},{id:"C",text:"The y-intercept only"},{id:"D",text:"Nothing that factored form doesn't also show"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "A quadratic in vertex form is f(x) = (x+2)^{2}-9. What is the minimum value of f?", data: { options: [{id:"A",text:"-9"},{id:"B",text:"-2"},{id:"C",text:"2"},{id:"D",text:"9"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "For f(x) = -(x-1)^{2}+4, since the leading coefficient is negative, this vertex represents:", data: { options: [{id:"A",text:"A maximum value of 4"},{id:"B",text:"A minimum value of 4"},{id:"C",text:"A zero at x=4"},{id:"D",text:"An undefined value"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Completing the square on x^{2}+4x-5 gives (x+2)^{2}-9. At what x-value does the minimum occur?", data: { options: [{id:"A",text:"x = -2"},{id:"B",text:"x = 2"},{id:"C",text:"x = -9"},{id:"D",text:"x = 9"}], correctId: "A" } },
+    { type: "equation_numeric", stem: "Complete the square: x^{2}-6x+5 = (x-3)^{2} - ___. What number completes the blank?", data: { answerLabel: "Number =", correctAnswer: "4" } },
+    { type: "equation_numeric", stem: "For f(x) = (x+2)^{2}-9, find the minimum value of f.", data: { answerLabel: "Minimum value =", correctAnswer: "-9" } },
+    { type: "equation_numeric", stem: "For f(x) = (x-1)^{2}+4, find the x-value where the minimum occurs.", data: { answerLabel: "x =", correctAnswer: "1" } },
+    { type: "equation_numeric", stem: "Complete the square: x^{2}+4x-5 = (x+2)^{2} - ___. What number completes the blank?", data: { answerLabel: "Number =", correctAnswer: "9" } },
+    { type: "equation_numeric", stem: "For f(x) = -(x-1)^{2}+4, find the maximum value of f.", data: { answerLabel: "Maximum value =", correctAnswer: "4" } },
+    { type: "hot_spot", stem: "For f(x) = (x-3)^{2}-4, mark the x-value where the minimum occurs on the number line.", data: { lineMin: -2, lineMax: 8, correctValue: 3 } },
+    { type: "hot_spot", stem: "For f(x) = (x+2)^{2}-9, mark the minimum value of f on the number line.", data: { lineMin: -12, lineMax: 2, correctValue: -9 } },
+    { type: "hot_spot", stem: "For f(x) = (x-1)^{2}+4, mark the x-value where the minimum occurs.", data: { lineMin: -3, lineMax: 5, correctValue: 1 } },
+    { type: "hot_spot", stem: "For f(x) = -(x-1)^{2}+4, mark the maximum value of f on the number line.", data: { lineMin: -2, lineMax: 8, correctValue: 4 } },
+    { type: "hot_spot", stem: "For f(x) = (x+5)^{2}-1, mark the x-value where the minimum occurs.", data: { lineMin: -10, lineMax: 2, correctValue: -5 } },
+  ],
+
+  "3": [
+    { type: "multiple_choice", stem: "Which property of exponents is used to rewrite (2^{3})^{2} as 2^{6}?", data: { options: [{id:"A",text:"Power of a power: multiply the exponents"},{id:"B",text:"Product of powers: add the exponents"},{id:"C",text:"Quotient of powers: subtract the exponents"},{id:"D",text:"Zero exponent rule"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Which property is used to rewrite 2^{5}\u00d72^{3} as 2^{8}?", data: { options: [{id:"A",text:"Product of powers: add the exponents"},{id:"B",text:"Power of a power: multiply the exponents"},{id:"C",text:"Quotient of powers: subtract the exponents"},{id:"D",text:"Negative exponent rule"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Rewriting f(x) = 4^{x} as f(x) = (2^{2})^{x} = 2^{2x} is useful for graphing because it:", data: { options: [{id:"A",text:"Makes it easier to compare growth rates with other base-2 exponential functions"},{id:"B",text:"Changes the function into a linear one"},{id:"C",text:"Removes the need to know the base"},{id:"D",text:"Makes the function decrease instead of increase"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Rewriting 9^{x} as (3^{2})^{x} = 3^{2x} uses which exponent property?", data: { options: [{id:"A",text:"Power of a power"},{id:"B",text:"Product of powers"},{id:"C",text:"Quotient of powers"},{id:"D",text:"Zero exponent"}], correctId: "A" } },
+    { type: "multiple_choice", stem: "Which rewritten form of 8^{x} reveals it as a base-2 exponential function?", data: { options: [{id:"A",text:"2^{3x}"},{id:"B",text:"2^{x+3}"},{id:"C",text:"2^{x/3}"},{id:"D",text:"3^{2x}"}], correctId: "A" } },
+    { type: "equation_numeric", stem: "Use the power of a power property to rewrite (2^{3})^{2} as a single power of 2. What is the exponent?", data: { answerLabel: "Exponent =", correctAnswer: "6" } },
+    { type: "equation_numeric", stem: "Use the product of powers property to rewrite 2^{5}\u00d72^{3} as a single power of 2. What is the exponent?", data: { answerLabel: "Exponent =", correctAnswer: "8" } },
+    { type: "equation_numeric", stem: "Rewrite 9^{x} as 3^{kx}. What is the value of k?", data: { answerLabel: "k =", correctAnswer: "2" } },
+    { type: "equation_numeric", stem: "Rewrite 8^{x} as 2^{kx}. What is the value of k?", data: { answerLabel: "k =", correctAnswer: "3" } },
+    { type: "equation_numeric", stem: "Evaluate (2^{3})^{2} using the power of a power property.", data: { answerLabel: "Value =", correctAnswer: "64" } },
+    { type: "hot_spot", stem: "Evaluate (2^{3})^{2} and mark its value on the number line.", data: { lineMin: 0, lineMax: 100, correctValue: 64 } },
+    { type: "hot_spot", stem: "Evaluate 2^{5}\u00d72^{3} and mark its value on the number line.", data: { lineMin: 0, lineMax: 300, correctValue: 256 } },
+    { type: "hot_spot", stem: "Evaluate (3^{2})^{2} and mark its value on the number line.", data: { lineMin: 0, lineMax: 100, correctValue: 81 } },
+    { type: "hot_spot", stem: "Evaluate 3^{2}\u00d73^{1} and mark its value on the number line.", data: { lineMin: 0, lineMax: 40, correctValue: 27 } },
+    { type: "hot_spot", stem: "Evaluate (2^{2})^{3} and mark its value on the number line.", data: { lineMin: 0, lineMax: 100, correctValue: 64 } },
+  ],
+};

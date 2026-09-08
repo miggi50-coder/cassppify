@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import WorksheetConverter from "./WorksheetConverter";
 import TopicPracticeGenerator from "./TopicPracticeGenerator";
 import PerformanceTaskBuilder from "./PerformanceTaskBuilder";
+import TargetGenerator from "./TargetGenerator";
 
 const NAVY = "#21295C";
 const TEAL = "#1C7293";
@@ -12,6 +13,7 @@ const TABS = [
   { id: "worksheet", label: "Worksheet CAASPPify" },
   { id: "practice", label: "Topic Practice Generator" },
   { id: "pt", label: "Performance Task Builder" },
+  { id: "target", label: "Target Generator" },
 ];
 
 export default function App() {
@@ -20,7 +22,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: "#F7FAFB" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 0" }} className="no-print">
-        <div style={{ display: "flex", gap: 8, borderBottom: `2px solid ${BORDER}`, paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 8, borderBottom: `2px solid ${BORDER}`, paddingBottom: 0, flexWrap: "wrap" }}>
           {TABS.map((t) => {
             const active = tab === t.id;
             return (
@@ -50,6 +52,7 @@ export default function App() {
       {tab === "worksheet" && <WorksheetConverter />}
       {tab === "practice" && <TopicPracticeGenerator />}
       {tab === "pt" && <PerformanceTaskBuilder />}
+      {tab === "target" && <TargetGenerator />}
     </div>
   );
 }

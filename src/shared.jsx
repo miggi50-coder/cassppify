@@ -20,7 +20,7 @@ const C = {
 const ITEM_TYPES = [
   { id: "multiple_choice", label: "Multiple Choice", desc: "Exactly 4 options, one correct response, with wrong options based on real student errors." },
   { id: "multi_select", label: "Multi Select", desc: "4 to 6 options, more than one correct response, with wrong options based on real student errors." },
-  { id: "matching_tables", label: "Matching Tables", desc: "Match each row to the correct category in a grid." },
+  { id: "matching_tables", label: "Matching Tables", desc: "Match each row to the correct category in a grid. The rows and columns hold the actual content, not the stem." },
   { id: "equation_numeric", label: "Equation / Numeric", desc: "Student enters a value or expression directly, no options." },
   { id: "drag_and_drop", label: "Drag and Drop", desc: "Student places the correct tile into a blank or target." },
   { id: "hot_spot", label: "Hot Spot", desc: "Student marks the correct point, region, or object." },
@@ -30,11 +30,15 @@ const ITEM_TYPES = [
 const TYPE_MAP = Object.fromEntries(ITEM_TYPES.map((t) => [t.id, t]));
 
 const SCHEMA_NOTE = `
-Return ONLY valid JSON, no markdown fences, no commentary. Use exactly this shape for each item's "data" field, matching its type:
+Return ONLY valid JSON, no markdown fences, no commentary. The JSON must be strictly valid: every double quote, backslash, and line break that appears inside a string value must be properly escaped. If you need to quote a term or phrase within a string value, use single quotes or apostrophes instead of double quotes, so you never need to escape a quote mark inside a string. Do not put a real line break inside a string value, use \\n instead if a line break is genuinely needed.
+
+Use exactly this shape for each item's "data" field, matching its type:
 
 multiple_choice: { "options": [{"id":"A","text":"..."}, ...], "correctId": "B" }
 multi_select: { "options": [{"id":"A","text":"..."}, ...], "correctIds": ["B","C"] }
 matching_tables: { "rows": ["row label 1","row label 2","row label 3"], "columns": ["col A","col B"], "correct": [0,1,0] }
+
+For matching_tables specifically: "stem" must be ONLY a short one or two sentence instruction, for example "Determine whether each expression is a polynomial in standard form." Never write the actual statements, expressions, or category descriptions as prose inside "stem". Every statement or expression being matched belongs in its own entry in the "rows" array, one per row, and every category belongs in the "columns" array as a short label of a few words, not a full sentence. If a category genuinely needs a longer description to be clear, shorten it to a few words for the column header and put the fuller explanation in "stem" once, not repeated per row.
 equation_numeric: { "answerLabel": "x =", "correctAnswer": "9" }
 drag_and_drop: { "template": "text with a single ___ blank", "tiles": ["opt1","opt2","opt3"], "correctTile": "opt2" }
 hot_spot: { "lineMin": -5, "lineMax": 5, "correctValue": 3 }
@@ -67,9 +71,43 @@ For a subscript, such as a sequence term or a logarithm base, write it as _{...}
 Never approximate comparison symbols with ASCII characters. Always use the real symbol directly: \u2264 for less than or equal to, \u2265 for greater than or equal to, \u2260 for not equal to. Never write "<=", ">=", or "!=".
 
 sqrt{...} / sqrt[n]{...}, frac{...}{...}, ^{...}, and _{...} are the ONLY special notations, because roots, fractions, multi-character exponents, and subscripts are the only things that render incorrectly as plain characters. Every other math symbol should be typed as an ordinary plain character, normally, with no special notation and no LaTeX-style commands: use × or · for multiplication, ÷ for division, ≤ ≥ ≠ for comparisons, = for equals, and so on. Never write \\cdot, \\div, \\times, or the bare words "cdot", "div", or "times" as substitutes for these ordinary symbols, that is not what the special notations above are for and it will show up as literal broken text.
+
+Every exponent and every subscript needs an explicit marker, never a bare digit stuck directly onto a letter with nothing between them. Never write x2 meaning x squared or meaning a coordinate label x sub 2, that is ambiguous and unreadable either way. For an exponent, write at minimum x^2 (or x^{2} for anything more complex). For a subscript, write at minimum x_2 (or x_{2} for anything more complex), for example when labeling coordinates like (x_1, y_1) and (x_2, y_2) in a slope or distance formula. This applies everywhere, including inside the "rows" and "columns" of a matching_tables item, not just in "stem".
 `.trim();
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 529 (Anthropic's own "Overloaded" signal) and the common 5xx codes are
+// transient server-side conditions, not something wrong with the request.
+// A short wait and retry resolves these most of the time.
+const TRANSIENT_STATUS = new Set([500, 502, 503, 504, 529]);
+
 async function callClaude(content, { maxTokens = 4000 } = {}) {
+  const maxAttempts = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await callClaudeOnce(content, maxTokens);
+    } catch (e) {
+      lastErr = e;
+      const isParseFailure = String(e.message || "").startsWith("Could not parse");
+      const isTransient = e.transient === true;
+      if ((isParseFailure || isTransient) && attempt < maxAttempts) {
+        if (isTransient) await sleep(attempt * 1500); // 1.5s, then 3s
+        continue;
+      }
+      if (isTransient) {
+        throw new Error("Claude's servers are still busy after a few tries. Please wait a minute and try again.");
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function callClaudeOnce(content, maxTokens) {
   const resp = await fetch("/api/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -81,6 +119,11 @@ async function callClaude(content, { maxTokens = 4000 } = {}) {
   });
   if (!resp.ok) {
     if (resp.status === 429) throw new Error("This site is getting a lot of requests right now, please wait a minute and try again.");
+    if (TRANSIENT_STATUS.has(resp.status)) {
+      const err = new Error("Claude's servers are temporarily overloaded. Retrying automatically...");
+      err.transient = true;
+      throw err;
+    }
     let detail = "";
     try {
       const errJson = await resp.json();
@@ -99,7 +142,54 @@ async function callClaude(content, { maxTokens = 4000 } = {}) {
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("Could not parse a response.");
-  return JSON.parse(cleaned.slice(start, end + 1));
+  const jsonSlice = cleaned.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonSlice);
+  } catch (e) {
+    // The model occasionally puts a real line break inside a text field
+    // (a long stem or sample response) instead of an escaped \n, which is
+    // invalid JSON. Walk the string tracking quote/escape state and fix
+    // raw control characters only when they're actually inside a string.
+    try {
+      return JSON.parse(sanitizeJSONControlChars(jsonSlice));
+    } catch (e2) {
+      throw new Error("Could not parse the response: " + e2.message);
+    }
+  }
+}
+
+function sanitizeJSONControlChars(str) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        out += ch;
+        inString = false;
+        continue;
+      }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+      out += ch;
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
 }
 
 /* ---------------- File readers ---------------- */
@@ -556,25 +646,60 @@ function FillInTable({ xValues, yValues, correctYValues, rowLabel, showAnswer })
 // instructed (see SCHEMA_NOTE) to mark these as sqrt{...} and frac{n}{d}; this
 // renders them properly instead of trusting raw characters.
 function Radical({ children, index }) {
+  // Table-cell layout instead of flex + position:relative, since the manual
+  // pixel-nudge (position:relative; top:-0.4em) that used to position the
+  // index rendered inconsistently across browser engines -- table-cell
+  // vertical-align is much older and more predictably supported, and is the
+  // same technique already used reliably for the Fraction component.
+  //
+  // When there's an index (an nth root), the left margin is wider than the
+  // no-index case: without it, a coefficient written right before the
+  // radical (like "2sqrt[3]{x}") sits flush against the small index digit,
+  // and "2" next to "3" reads ambiguously like "23". The extra gap makes it
+  // unambiguously read as "2" times "the cube root of x".
   return (
-    <span style={{ display: "inline-flex", alignItems: "flex-start", margin: "0 1px" }}>
+    <span style={{ display: "inline-flex", alignItems: "flex-start", margin: index ? "0 1px 0 4px" : "0 1px" }}>
       {index && (
-        <span style={{ fontSize: "0.6em", lineHeight: 1, position: "relative", top: "-0.4em", marginRight: "-1px" }}>{index}</span>
+        <span style={{ display: "inline-table", verticalAlign: "bottom", marginRight: 1 }}>
+          <span style={{ display: "table-row" }}>
+            <span style={{ display: "table-cell", fontSize: "0.6em", verticalAlign: "bottom", lineHeight: 1, paddingRight: 1 }}>{index}</span>
+            <span style={{ display: "table-cell", fontSize: "1.05em", verticalAlign: "bottom", lineHeight: 1 }}>{"\u221A"}</span>
+          </span>
+        </span>
       )}
-      <span style={{ fontSize: "1.05em", lineHeight: 1, marginRight: 1, transform: "translateY(1px)" }}>{"\u221A"}</span>
+      {!index && (
+        <span style={{ fontSize: "1.05em", lineHeight: 1, marginRight: 1, transform: "translateY(1px)" }}>{"\u221A"}</span>
+      )}
       <span style={{ borderTop: "1.5px solid currentColor", paddingTop: 1 }}>{children}</span>
     </span>
   );
 }
 
-function Fraction({ numerator, denominator }) {
+// Explicit font-size scale instead of relying on the browser's default
+// <sup>/<sub> "smaller" keyword, which is inconsistent across engines and,
+// critically, doesn't compound predictably when the content is a nested
+// Fraction (which sets its own font-size). Without this, a fractional
+// exponent like x^{frac{2}{3}} barely shrinks at all and ends up looking
+// almost the same size as the main equation instead of a proper exponent.
+function Sup({ children }) {
+  return <sup style={{ fontSize: "0.7em", lineHeight: 1 }}>{children}</sup>;
+}
+function Sub({ children }) {
+  return <sub style={{ fontSize: "0.7em", lineHeight: 1 }}>{children}</sub>;
+}
+
+function Fraction({ numerator, denominator, compact }) {
+  const fontSize = compact ? "0.8em" : "0.95em";
+  const numPad = compact ? "0 2px 1px" : "0 4px 2px";
+  const denPad = compact ? "1px 2px 0" : "2px 4px 0";
+  const lineHeight = compact ? 1.05 : 1.2;
   return (
-    <span style={{ display: "inline-table", verticalAlign: "middle", margin: "0 3px", textAlign: "center", lineHeight: 1.2, fontSize: "0.95em" }}>
+    <span style={{ display: "inline-table", verticalAlign: "middle", margin: "0 3px", textAlign: "center", lineHeight, fontSize }}>
       <span style={{ display: "table-row" }}>
-        <span style={{ display: "table-cell", padding: "0 4px 2px", borderBottom: "1.5px solid currentColor" }}>{numerator}</span>
+        <span style={{ display: "table-cell", padding: numPad, borderBottom: "1.5px solid currentColor" }}>{numerator}</span>
       </span>
       <span style={{ display: "table-row" }}>
-        <span style={{ display: "table-cell", padding: "2px 4px 0" }}>{denominator}</span>
+        <span style={{ display: "table-cell", padding: denPad }}>{denominator}</span>
       </span>
     </span>
   );
@@ -593,7 +718,7 @@ function cleanStrayLatex(text) {
     .replace(/!=/g, "\u2260");
 }
 
-function renderMathText(text) {
+function renderMathText(text, compact = false) {
   if (!text || typeof text !== "string") return text;
   text = cleanStrayLatex(text);
   if (!/sqrt[\[{]|frac\{|[\^_][A-Za-z0-9{-]/.test(text)) return text;
@@ -621,7 +746,7 @@ function renderMathText(text) {
       if (closeBracket !== -1 && text[closeBracket + 1] === "{") {
         const indexStr = text.slice(i + 5, closeBracket);
         const [content, next] = readBraced(text, closeBracket + 1);
-        parts.push(<Radical key={key++} index={indexStr}>{renderMathText(content)}</Radical>);
+        parts.push(<Radical key={key++} index={indexStr}>{renderMathText(content, compact)}</Radical>);
         i = next;
         continue;
       }
@@ -629,7 +754,7 @@ function renderMathText(text) {
     }
     if (text.startsWith("sqrt{", i)) {
       const [content, next] = readBraced(text, i + 4);
-      parts.push(<Radical key={key++}>{renderMathText(content)}</Radical>);
+      parts.push(<Radical key={key++}>{renderMathText(content, compact)}</Radical>);
       i = next;
       continue;
     }
@@ -637,7 +762,7 @@ function renderMathText(text) {
       const [num, afterNum] = readBraced(text, i + 4);
       if (text[afterNum] === "{") {
         const [den, afterDen] = readBraced(text, afterNum);
-        parts.push(<Fraction key={key++} numerator={renderMathText(num)} denominator={renderMathText(den)} />);
+        parts.push(<Fraction key={key++} numerator={renderMathText(num, compact)} denominator={renderMathText(den, compact)} compact={compact} />);
         i = afterDen;
         continue;
       }
@@ -645,20 +770,20 @@ function renderMathText(text) {
     }
     if (text[i] === "^" && text[i + 1] === "{") {
       const [content, next] = readBraced(text, i + 1);
-      parts.push(<sup key={key++}>{renderMathText(content)}</sup>);
+      parts.push(<Sup key={key++}>{renderMathText(content, true)}</Sup>);
       i = next;
       continue;
     }
     if (text[i] === "_" && text[i + 1] === "{") {
       const [content, next] = readBraced(text, i + 1);
-      parts.push(<sub key={key++}>{renderMathText(content)}</sub>);
+      parts.push(<Sub key={key++}>{renderMathText(content, true)}</Sub>);
       i = next;
       continue;
     }
     if (text[i] === "^" && /[A-Za-z0-9-]/.test(text[i + 1] || "")) {
       const m = simpleTokenRe.exec(text.slice(i + 1));
       if (m) {
-        parts.push(<sup key={key++}>{m[0]}</sup>);
+        parts.push(<Sup key={key++}>{m[0]}</Sup>);
         i = i + 1 + m[0].length;
         continue;
       }
@@ -666,7 +791,7 @@ function renderMathText(text) {
     if (text[i] === "_" && /[A-Za-z0-9-]/.test(text[i + 1] || "")) {
       const m = simpleTokenRe.exec(text.slice(i + 1));
       if (m) {
-        parts.push(<sub key={key++}>{m[0]}</sub>);
+        parts.push(<Sub key={key++}>{m[0]}</Sub>);
         i = i + 1 + m[0].length;
         continue;
       }
@@ -835,7 +960,7 @@ function containsMathNotation(text) {
 // HTML in the question. This gives a real stacked fraction, radical, and
 // superscript/subscript in the actual Canvas quiz, instead of the flattened
 // "(3)/(2)" plain-text fallback.
-function mathTextToHTML(text) {
+function mathTextToHTML(text, compact) {
   if (!text || typeof text !== "string") return "";
   text = cleanStrayLatex(text);
 
@@ -855,6 +980,20 @@ function mathTextToHTML(text) {
   }
   const simpleTokenRe = /^-?[A-Za-z0-9]+/;
 
+  // Matches the live app's Fraction rendering exactly: a normal fraction at
+  // the top level, or a smaller "compact" one when nested inside an
+  // exponent, where a full-size two-row fraction would look oversized and,
+  // in Canvas specifically, can get clipped by the exponent's line box.
+  function fractionHTML(numHTML, denHTML, isCompact) {
+    const fontSize = isCompact ? "0.8em" : "0.95em";
+    const numPad = isCompact ? "0 2px 1px" : "0 4px 2px";
+    const denPad = isCompact ? "1px 2px 0" : "2px 4px 0";
+    const lineHeight = isCompact ? "1.05" : "1.2";
+    return '<span style="display:inline-table;vertical-align:middle;margin:0 3px;text-align:center;line-height:' + lineHeight + ';font-size:' + fontSize + ';">' +
+      '<span style="display:table-row;"><span style="display:table-cell;padding:' + numPad + ';border-bottom:1.5px solid currentColor;">' + numHTML + '</span></span>' +
+      '<span style="display:table-row;"><span style="display:table-cell;padding:' + denPad + ';">' + denHTML + '</span></span></span>';
+  }
+
   let out = "";
   let i = 0;
   while (i < text.length) {
@@ -863,10 +1002,17 @@ function mathTextToHTML(text) {
       if (closeBracket !== -1 && text[closeBracket + 1] === "{") {
         const indexStr = text.slice(i + 5, closeBracket);
         const [content, next] = readBraced(text, closeBracket + 1);
-        out += '<span style="display:inline-flex;align-items:flex-start;">' +
-          '<span style="font-size:0.6em;position:relative;top:-0.4em;margin-right:-1px;">' + esc(indexStr) + "</span>" +
-          '<span style="font-size:1.05em;margin-right:1px;">&radic;</span>' +
-          '<span style="border-top:1.5px solid black;padding-top:1px;">' + mathTextToHTML(content) + "</span></span>";
+        // Table-cell layout, not position:relative -- the old hack is
+        // exactly what made the index float away from the radical sign.
+        // Extra left margin so a preceding coefficient (like "2sqrt[3]{x}")
+        // doesn't crowd right up against the small index digit.
+        out += '<span style="display:inline-flex;align-items:flex-start;margin:0 1px 0 4px;">' +
+          '<span style="display:inline-table;vertical-align:bottom;margin-right:1px;">' +
+          '<span style="display:table-row;">' +
+          '<span style="display:table-cell;font-size:0.6em;vertical-align:bottom;line-height:1;padding-right:1px;">' + esc(indexStr) + '</span>' +
+          '<span style="display:table-cell;font-size:1.05em;vertical-align:bottom;line-height:1;">&radic;</span>' +
+          '</span></span>' +
+          '<span style="border-top:1.5px solid currentColor;padding-top:1px;">' + mathTextToHTML(content, compact) + '</span></span>';
         i = next;
         continue;
       }
@@ -874,9 +1020,9 @@ function mathTextToHTML(text) {
     }
     if (text.startsWith("sqrt{", i)) {
       const [content, next] = readBraced(text, i + 4);
-      out += '<span style="display:inline-flex;align-items:flex-start;">' +
-        '<span style="font-size:1.05em;margin-right:1px;">&radic;</span>' +
-        '<span style="border-top:1.5px solid black;padding-top:1px;">' + mathTextToHTML(content) + "</span></span>";
+      out += '<span style="display:inline-flex;align-items:flex-start;margin:0 1px;">' +
+        '<span style="font-size:1.05em;line-height:1;margin-right:1px;position:relative;top:1px;">&radic;</span>' +
+        '<span style="border-top:1.5px solid currentColor;padding-top:1px;">' + mathTextToHTML(content, compact) + '</span></span>';
       i = next;
       continue;
     }
@@ -884,9 +1030,7 @@ function mathTextToHTML(text) {
       const [num, afterNum] = readBraced(text, i + 4);
       if (text[afterNum] === "{") {
         const [den, afterDen] = readBraced(text, afterNum);
-        out += '<span style="display:inline-table;vertical-align:middle;text-align:center;line-height:1.2;">' +
-          '<span style="display:table-row;"><span style="display:table-cell;border-bottom:1.5px solid black;padding:0 4px 2px;">' + mathTextToHTML(num) + "</span></span>" +
-          '<span style="display:table-row;"><span style="display:table-cell;padding:2px 4px 0;">' + mathTextToHTML(den) + "</span></span></span>";
+        out += fractionHTML(mathTextToHTML(num, compact), mathTextToHTML(den, compact), !!compact);
         i = afterDen;
         continue;
       }
@@ -894,23 +1038,44 @@ function mathTextToHTML(text) {
     }
     if (text[i] === "^" && text[i + 1] === "{") {
       const [content, next] = readBraced(text, i + 1);
-      out += "<sup>" + mathTextToHTML(content) + "</sup>";
+      // If the exponent contains a fraction or radical, wrapping it in a
+      // native <sup> is exactly what got clipped in real Canvas testing.
+      // But the radical's own index number -- raised and shrunk using
+      // inline-table + vertical-align, never a <sup> tag -- rendered
+      // perfectly in that same testing. So for a risky exponent, this
+      // reuses that exact non-<sup> technique to get a true stacked
+      // fraction, properly raised, without ever touching <sup> at all.
+      const risky = /frac\{|sqrt[\[{]/.test(content);
+      if (risky) {
+        out += '<span style="display:inline-table;vertical-align:top;margin-left:1px;position:relative;top:-0.5em;">' +
+          '<span style="display:table-row;"><span style="display:table-cell;font-size:0.7em;line-height:1;vertical-align:top;">' +
+          mathTextToHTML(content, true) + '</span></span></span>';
+      } else {
+        out += '<sup style="font-size:0.7em;line-height:1;">' + mathTextToHTML(content, true) + "</sup>";
+      }
       i = next;
       continue;
     }
     if (text[i] === "_" && text[i + 1] === "{") {
       const [content, next] = readBraced(text, i + 1);
-      out += "<sub>" + mathTextToHTML(content) + "</sub>";
+      const risky = /frac\{|sqrt[\[{]/.test(content);
+      if (risky) {
+        out += '<span style="display:inline-table;vertical-align:bottom;margin-left:1px;position:relative;top:0.3em;">' +
+          '<span style="display:table-row;"><span style="display:table-cell;font-size:0.7em;line-height:1;vertical-align:bottom;">' +
+          mathTextToHTML(content, true) + '</span></span></span>';
+      } else {
+        out += '<sub style="font-size:0.7em;line-height:1;">' + mathTextToHTML(content, true) + "</sub>";
+      }
       i = next;
       continue;
     }
     if (text[i] === "^" && /[A-Za-z0-9-]/.test(text[i + 1] || "")) {
       const m = simpleTokenRe.exec(text.slice(i + 1));
-      if (m) { out += "<sup>" + esc(m[0]) + "</sup>"; i = i + 1 + m[0].length; continue; }
+      if (m) { out += '<sup style="font-size:0.7em;line-height:1;">' + esc(m[0]) + "</sup>"; i = i + 1 + m[0].length; continue; }
     }
     if (text[i] === "_" && /[A-Za-z0-9-]/.test(text[i + 1] || "")) {
       const m = simpleTokenRe.exec(text.slice(i + 1));
-      if (m) { out += "<sub>" + esc(m[0]) + "</sub>"; i = i + 1 + m[0].length; continue; }
+      if (m) { out += '<sub style="font-size:0.7em;line-height:1;">' + esc(m[0]) + "</sub>"; i = i + 1 + m[0].length; continue; }
     }
     {
       const markers = ["sqrt[", "sqrt{", "frac{"];
@@ -926,6 +1091,233 @@ function mathTextToHTML(text) {
     }
   }
   return out;
+}
+
+// Standalone math-to-SVG layout engine, developed and tested in a real
+// browser (via canvas.measureText) so metrics are accurate, not guessed.
+
+function buildMathSVG(text, opts) {
+  opts = opts || {};
+  const fontSize = opts.fontSize || 17;
+  const fontFamily = opts.fontFamily || "Calibri, Arial, sans-serif";
+  const color = opts.color || "#1A1A2E";
+
+  const _canvas = document.createElement("canvas");
+  const ctx = _canvas.getContext("2d");
+
+  function measure(str, size) {
+    ctx.font = size + "px " + fontFamily;
+    const m = ctx.measureText(str || "");
+    const ascent = m.actualBoundingBoxAscent || size * 0.72;
+    const descent = m.actualBoundingBoxDescent || size * 0.02;
+    return { width: m.width, ascent, descent };
+  }
+
+  // ---------- Parse "frac{}/sqrt[n]{}/^{}/_{}" notation into a node tree ----------
+  function readBraced(str, openBraceIdx) {
+    let depth = 0;
+    for (let j = openBraceIdx; j < str.length; j++) {
+      if (str[j] === "{") depth++;
+      else if (str[j] === "}") {
+        depth--;
+        if (depth === 0) return [str.slice(openBraceIdx + 1, j), j + 1];
+      }
+    }
+    return [str.slice(openBraceIdx + 1), str.length];
+  }
+  const simpleTokenRe = /^-?[A-Za-z0-9]+/;
+
+  function parse(str) {
+    const nodes = [];
+    let i = 0;
+    while (i < str.length) {
+      if (str.startsWith("sqrt[", i)) {
+        const closeBracket = str.indexOf("]", i);
+        if (closeBracket !== -1 && str[closeBracket + 1] === "{") {
+          const idx = str.slice(i + 5, closeBracket);
+          const [content, next] = readBraced(str, closeBracket + 1);
+          nodes.push({ t: "sqrt", index: idx, content: parse(content) });
+          i = next;
+          continue;
+        }
+      }
+      if (str.startsWith("sqrt{", i)) {
+        const [content, next] = readBraced(str, i + 4);
+        nodes.push({ t: "sqrt", index: null, content: parse(content) });
+        i = next;
+        continue;
+      }
+      if (str.startsWith("frac{", i)) {
+        const [num, afterNum] = readBraced(str, i + 4);
+        if (str[afterNum] === "{") {
+          const [den, afterDen] = readBraced(str, afterNum);
+          nodes.push({ t: "frac", num: parse(num), den: parse(den) });
+          i = afterDen;
+          continue;
+        }
+      }
+      if (str[i] === "^" && str[i + 1] === "{") {
+        const [content, next] = readBraced(str, i + 1);
+        nodes.push({ t: "sup", base: parse(content) });
+        i = next;
+        continue;
+      }
+      if (str[i] === "_" && str[i + 1] === "{") {
+        const [content, next] = readBraced(str, i + 1);
+        nodes.push({ t: "sub", base: parse(content) });
+        i = next;
+        continue;
+      }
+      if (str[i] === "^" && /[A-Za-z0-9-]/.test(str[i + 1] || "")) {
+        const m = simpleTokenRe.exec(str.slice(i + 1));
+        if (m) { nodes.push({ t: "sup", base: [{ t: "text", s: m[0] }] }); i = i + 1 + m[0].length; continue; }
+      }
+      if (str[i] === "_" && /[A-Za-z0-9-]/.test(str[i + 1] || "")) {
+        const m = simpleTokenRe.exec(str.slice(i + 1));
+        if (m) { nodes.push({ t: "sub", base: [{ t: "text", s: m[0] }] }); i = i + 1 + m[0].length; continue; }
+      }
+      // plain text run until next special marker
+      const markers = ["sqrt[", "sqrt{", "frac{"];
+      let next = str.length;
+      markers.forEach((m) => { const idx = str.indexOf(m, i); if (idx !== -1) next = Math.min(next, idx); });
+      for (let j = i; j < str.length; j++) { if (str[j] === "^" || str[j] === "_") { next = Math.min(next, j); break; } }
+      if (next === i) { nodes.push({ t: "text", s: str[i] }); i++; } else { nodes.push({ t: "text", s: str.slice(i, next) }); i = next; }
+    }
+    return nodes;
+  }
+
+  // ---------- Layout: turn a node list into a row of positioned glyphs ----------
+  // A "row" is {width, ascent, descent, parts: [{x, text?, line?, path?, fontSize?}]}
+  const GAP = 2;
+  const BAR_GAP = 2;
+
+  function layoutRow(nodes, fontSize) {
+    let x = 0;
+    let ascent = fontSize * 0.72;
+    let descent = fontSize * 0.02;
+    const parts = [];
+
+    nodes.forEach((node) => {
+      if (node.t === "text") {
+        const m = measure(node.s, fontSize);
+        parts.push({ text: node.s, x, fontSize, baseline: 0 });
+        x += m.width;
+        ascent = Math.max(ascent, m.ascent);
+        descent = Math.max(descent, m.descent);
+      } else if (node.t === "frac") {
+        const numRow = layoutRow(node.num, fontSize);
+        const denRow = layoutRow(node.den, fontSize);
+        const w = Math.max(numRow.width, denRow.width) + GAP * 2;
+        const barY = 0; // relative to this fraction's own baseline (see below)
+        // Numerator sits above the bar; denominator sits below.
+        const numAscentTotal = numRow.ascent + numRow.descent + BAR_GAP;
+        const denDescentTotal = denRow.ascent + denRow.descent + BAR_GAP;
+        placeSubRow(parts, numRow, x + (w - numRow.width) / 2, -(BAR_GAP + numRow.descent));
+        placeSubRow(parts, denRow, x + (w - denRow.width) / 2, denRow.ascent + BAR_GAP);
+        parts.push({ line: true, x1: x, x2: x + w, y: barY });
+        x += w + GAP * 2;
+        ascent = Math.max(ascent, numAscentTotal);
+        descent = Math.max(descent, denDescentTotal);
+      } else if (node.t === "sup" || node.t === "sub") {
+        const subFontSize = fontSize * 0.68;
+        const baseRow = layoutRow(node.base, subFontSize);
+        const shift = node.t === "sup" ? -(fontSize * 0.38) : (fontSize * 0.20);
+        placeSubRow(parts, baseRow, x + 1, shift);
+        x += baseRow.width + 1;
+        if (node.t === "sup") ascent = Math.max(ascent, -shift + baseRow.ascent);
+        else descent = Math.max(descent, shift + baseRow.descent);
+      } else if (node.t === "sqrt") {
+        const contentRow = layoutRow(node.content, fontSize);
+        const hookW = fontSize * 0.42;
+        const indexPad = (x > 0 && node.index) ? 3 : 0; // extra gap so a preceding coefficient doesn't crowd the index
+        const indexW = node.index ? measure(node.index, fontSize * 0.55).width + 1 + indexPad : 0;
+        const barY = -(contentRow.ascent + 3);
+        // horizontal bar over the content
+        placeSubRow(parts, contentRow, x + indexW + hookW, 0);
+        parts.push({ line: true, x1: x + indexW + hookW, x2: x + indexW + hookW + contentRow.width + 2, y: barY });
+        // checkmark: from mid-height down to a point, then up to the bar start
+        const checkTop = barY;
+        const checkBottom = contentRow.descent + 1;
+        parts.push({
+          path: true,
+          d: `M ${x + indexW} ${checkBottom * 0.25} L ${x + indexW + hookW * 0.42} ${checkBottom} L ${x + indexW + hookW} ${checkTop}`,
+        });
+        if (node.index) {
+          parts.push({ text: node.index, x: x + 1 + indexPad, fontSize: fontSize * 0.55, baseline: checkBottom * 0.15 });
+        }
+        x += indexW + hookW + contentRow.width + 4;
+        ascent = Math.max(ascent, -checkTop + 2);
+        descent = Math.max(descent, contentRow.descent + 2);
+      }
+    });
+
+    return { width: x, ascent, descent, parts };
+  }
+
+  function placeSubRow(parts, row, offsetX, offsetY) {
+    row.parts.forEach((p) => {
+      const copy = Object.assign({}, p);
+      copy.x = (p.x || 0) + offsetX;
+      copy.baseline = (p.baseline || 0) + offsetY;
+      if (p.line) { copy.x1 = p.x1 + offsetX; copy.x2 = p.x2 + offsetX; copy.y = p.y + offsetY; }
+      if (p.path) { copy.d = shiftPath(p.d, offsetX, offsetY); }
+      parts.push(copy);
+    });
+  }
+
+  function shiftPath(d, dx, dy) {
+    return d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m, a, b) => (parseFloat(a) + dx) + " " + (parseFloat(b) + dy));
+  }
+
+  const nodes = parse(text);
+  const row = layoutRow(nodes, fontSize);
+
+  const totalHeight = row.ascent + row.descent + 4;
+  const baselineY = row.ascent + 2;
+
+  let svgParts = "";
+  row.parts.forEach((p) => {
+    if (p.text !== undefined) {
+      svgParts += `<text xml:space="preserve" x="${p.x.toFixed(1)}" y="${(baselineY + p.baseline).toFixed(1)}" font-size="${p.fontSize.toFixed(1)}" font-family="${fontFamily}" fill="${color}">${escapeXml(p.text)}</text>`;
+    } else if (p.line) {
+      svgParts += `<line x1="${p.x1.toFixed(1)}" y1="${(baselineY + p.y).toFixed(1)}" x2="${p.x2.toFixed(1)}" y2="${(baselineY + p.y).toFixed(1)}" stroke="${color}" stroke-width="1.3"/>`;
+    } else if (p.path) {
+      const shifted = p.d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m, a, b) => a + " " + (parseFloat(b) + baselineY));
+      svgParts += `<path d="${shifted}" stroke="${color}" stroke-width="1.3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+  });
+
+  function escapeXml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(row.width + 4)}" height="${Math.ceil(totalHeight)}" viewBox="0 0 ${Math.ceil(row.width + 4)} ${Math.ceil(totalHeight)}">${svgParts}</svg>`;
+  return { svg, width: Math.ceil(row.width + 4), height: Math.ceil(totalHeight) };
+}
+
+// Wraps buildMathSVG as a self-contained base64 <img> tag. Used for QTI/Canvas
+// export instead of nested HTML: a browser can clip or re-flow nested HTML
+// (tables inside <sup>, fraction bars inside a constrained question-text
+// container) depending on Canvas's own surrounding CSS, which is exactly
+// what caused exponents to look "cut off" and radicals to look "horrible"
+// in real Canvas testing. An <img> with a fixed intrinsic width/height is a
+// single flat picture -- there is no HTML structure left for any CSS rule,
+// anywhere, to clip or mis-style. This is deliberately a stronger, more
+// drastic fix than another round of CSS tuning, since two rounds of CSS
+// tuning already failed to hold up in real Canvas.
+function mathTextToImgTag(text, fontSize) {
+  const alt = mathTextToPlain(text).replace(/"/g, "'");
+  const { svg, width, height } = buildMathSVG(text, { fontSize: fontSize || 17 });
+  const b64 = typeof btoa === "function" ? btoa(unescape(encodeURIComponent(svg))) : "";
+  return `<img src="data:image/svg+xml;base64,${b64}" alt="${xmlEscape(alt)}" width="${width}" height="${height}" style="vertical-align:middle;display:inline-block;">`;
+}
+
+// Only builds special HTML when math notation is actually present, so plain
+// narrative text (most of a Performance Task stimulus) stays as normal,
+// lightweight, accessible HTML text.
+function mathAwareHTML(text) {
+  if (containsMathNotation(text)) return mathTextToHTML(text);
+  return xmlEscape(String(text || ""));
 }
 
 /* ---------------- Minimal ZIP writer (store method, no library) ---------------- */
@@ -1068,6 +1460,18 @@ function qtiMaterial(text) {
   return `<material><mattext texttype="text/plain">${xmlEscape(text)}</mattext></material>`;
 }
 
+// Canvas's Matching question type renders its answer choices as a native
+// <select>/<option> dropdown, not as regular rendered content. HTML markup
+// inside an <option> element is never interpreted by any browser -- it only
+// ever displays as literal text, regardless of the QTI texttype declared.
+// So for matching-table columns specifically, HTML formatting can never
+// work no matter what the export does; fall back to the plain-text math
+// rendering (e.g. "sqrt(x)", "(3/2)") so at least it reads correctly, even
+// unformatted, instead of showing raw HTML tags as text.
+function qtiMaterialPlainOnly(text) {
+  return `<material><mattext texttype="text/plain">${xmlEscape(mathTextToPlain(text))}</mattext></material>`;
+}
+
 function qtiMultipleChoice(id, stem, options, correctId, points) {
   const labels = (options || [])
     .map((o) => `<response_label ident="${xmlEscape(o.id)}">${qtiMaterial(o.text)}</response_label>`)
@@ -1162,10 +1566,10 @@ function qtiMatching(id, stem, rows, columns, correct, points) {
   const responses = (rows || [])
     .map((r, ri) => {
       const labels = (columns || [])
-        .map((c, ci) => `<response_label ident="c${ci}">${qtiMaterial(c)}</response_label>`)
+        .map((c, ci) => `<response_label ident="c${ci}">${qtiMaterialPlainOnly(c)}</response_label>`)
         .join("\n");
       return `<response_lid ident="response${ri}" rcardinality="Single">
-        ${qtiMaterial(r)}
+        ${qtiMaterialPlainOnly(r)}
         <render_choice>${labels}</render_choice>
       </response_lid>`;
     })
@@ -1179,7 +1583,7 @@ function qtiMatching(id, stem, rows, columns, correct, points) {
   return `<item ident="${id}" title="${id}">
   ${qtiMeta("matching_question", points)}
   <presentation>
-    ${qtiMaterial(stem)}
+    ${qtiMaterialPlainOnly(stem)}
     ${responses}
   </presentation>
   <resprocessing>
@@ -1241,12 +1645,12 @@ function stimulusToHTML(stimulus) {
   if (!stimulus) return "";
   const narrative = typeof stimulus === "string" ? stimulus : stimulus.narrative;
   let html = "";
-  if (narrative) html += `<p>${mathTextToHTML(narrative)}</p>`;
+  if (narrative) html += `<p>${mathAwareHTML(narrative)}</p>`;
   if (stimulus.table && stimulus.table.headers) {
     html += '<table style="border-collapse:collapse;margin:10px 0;">';
-    html += "<tr>" + stimulus.table.headers.map((h) => `<th style="border:1px solid #999;padding:6px 10px;background:#f2f2f2;">${mathTextToHTML(String(h))}</th>`).join("") + "</tr>";
+    html += "<tr>" + stimulus.table.headers.map((h) => `<th style="border:1px solid #999;padding:6px 10px;background:#f2f2f2;">${mathAwareHTML(String(h))}</th>`).join("") + "</tr>";
     (stimulus.table.rows || []).forEach((row) => {
-      html += "<tr>" + row.map((cell) => `<td style="border:1px solid #999;padding:6px 10px;">${mathTextToHTML(String(cell))}</td>`).join("") + "</tr>";
+      html += "<tr>" + row.map((cell) => `<td style="border:1px solid #999;padding:6px 10px;">${mathAwareHTML(String(cell))}</td>`).join("") + "</tr>";
     });
     html += "</table>";
   }

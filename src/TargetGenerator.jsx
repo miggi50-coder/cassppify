@@ -1,70 +1,114 @@
 import React, { useState, useMemo, useRef } from "react";
 import { C, ITEM_TYPES, TYPE_MAP, SCHEMA_NOTE, callClaude, ItemVisual, renderMathText, downloadQTI } from "./shared";
-import { ALL_LESSONS } from "./topics";
-import { PRACTICE_BANK } from "./practiceBank";
+import { TARGET_SPECS } from "./targetSpecs";
+import { TARGET_BANK } from "./targetBank";
 
-function bankCount(lessonNum) {
-  return (PRACTICE_BANK[lessonNum] || []).length;
+function targetBankCount(evidenceKey) {
+  return (TARGET_BANK[evidenceKey] || []).length;
 }
 
-function pickFromBank(lessonNum, count) {
-  const bank = PRACTICE_BANK[lessonNum];
+function pickFromTargetBank(evidenceKey, count) {
+  const bank = TARGET_BANK[evidenceKey];
   if (!bank || !bank.length) return [];
   const shuffled = [...bank].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }
 
-function typesBlockLocal() {
+function typesBlockForTarget() {
   return ITEM_TYPES.map((t) => `- ${t.id}: ${t.label}. ${t.desc}`).join("\n");
 }
 
-async function generatePracticeSet(lessonsWithCounts, feedback) {
+// Map a target's own "Allowable Item Types" (SBAC's language) onto this
+// tool's 8 item types, so generation is steered toward formats the real
+// target spec actually allows, not just whatever the model prefers.
+function alignedTypes(target) {
+  const raw = (target.item_types || []).join(" | ").toLowerCase();
+  const allowed = [];
+  if (raw.includes("multiple choice")) allowed.push("multiple_choice");
+  if (raw.includes("multi-select") || raw.includes("multi select")) allowed.push("multi_select");
+  if (raw.includes("matching")) allowed.push("matching_tables");
+  if (raw.includes("equation") || raw.includes("numeric")) allowed.push("equation_numeric");
+  if (raw.includes("drag and drop") || raw.includes("drag-and-drop")) allowed.push("drag_and_drop");
+  if (raw.includes("hot spot")) allowed.push("hot_spot");
+  if (raw.includes("graph")) allowed.push("graphing");
+  if (raw.includes("fill-in table") || raw.includes("fill in table")) allowed.push("fill_in_table");
+  return allowed.length ? allowed : ITEM_TYPES.map((t) => t.id);
+}
+
+function buildTargetContext(target, evidenceList) {
+  const std = (target.standards || []).map((s) => `${s.code}: ${s.text}`).join("\n");
+  const ev = evidenceList.map((e) => `${target.letter}${e.num}. ${e.text}`).join("\n");
+  const allowed = alignedTypes(target);
+  return `Target ${target.letter}: ${target.title}
+Content domain: ${target.domain}
+
+Standards:
+${std}
+
+Clarifications from the official target specification: ${target.clarifications || "None provided."}
+
+Evidence Required statements to write problems for:
+${ev}
+
+Key vocabulary students should see used correctly: ${target.vocab || "None specified."}
+${target.stimulus ? `Allowable stimulus materials: ${target.stimulus}` : ""}
+${target.target_specific_attributes ? `Target-specific attributes to respect: ${target.target_specific_attributes}` : ""}
+${target.non_target_constructs && target.non_target_constructs.toLowerCase() !== "none" ? `Non-target constructs, do not require these to answer: ${target.non_target_constructs}` : ""}
+
+The official specification for this target only allows these item formats: ${allowed.map((a) => TYPE_MAP[a].label).join(", ")}. Only use formats from this list, even though the general list below has more options.`;
+}
+
+async function generateTargetSet(target, evidenceList, countsByEvidence, feedback) {
   const feedbackBlock = feedback && feedback.trim()
     ? `\nAdditional instructions from the teacher, follow carefully: ${feedback.trim()}\n`
     : "";
-  const lessonList = lessonsWithCounts.map((l) => `- ${l.num} ${l.title} (${l.standard}): exactly ${l.count} problem${l.count === 1 ? "" : "s"}`).join("\n");
-  const total = lessonsWithCounts.reduce((sum, l) => sum + l.count, 0);
-  const prompt = `You are writing original CAASPP (Smarter Balanced) style practice problems for a California Integrated Math 3 class.
+  const perEvidenceCounts = evidenceList
+    .map((e) => `- Evidence ${target.letter}${e.num}: exactly ${countsByEvidence[e.num] || 3} problem${(countsByEvidence[e.num] || 3) === 1 ? "" : "s"}`)
+    .join("\n");
+  const total = evidenceList.reduce((sum, e) => sum + (countsByEvidence[e.num] || 3), 0);
 
-Lessons to cover, with the exact number of problems requested for each:
-${lessonList}
+  const prompt = `You are writing original CAASPP (Smarter Balanced) style items directly from an official target specification, for California Integrated Math 3 students.
+
+${buildTargetContext(target, evidenceList)}
+
+Write exactly the requested number of problems for each Evidence Required statement below, no more and no fewer for any single one:
+${perEvidenceCounts}
 ${feedbackBlock}
-Write exactly the requested number of problems for each lesson listed, no more and no fewer for any single lesson. Vary the item type across the whole set so students see different CAASPP formats, choosing from:
-${typesBlockLocal()}
+Choose the best fit item type for each problem from the allowed list above only.
 
 ${SCHEMA_NOTE}
 
-Return ONLY: {"results": [{"lesson_num": "the exact lesson number this problem targets, e.g. 9.1", "item_type": "...", "stem": "...", "data": {...}}, ...]}
-Return exactly ${total} results total, matching the per-lesson counts above exactly.`;
+Return ONLY: {"results": [{"evidence_num": "the exact evidence number this problem targets, e.g. 1", "item_type": "...", "stem": "...", "data": {...}}, ...]}
+Return exactly ${total} results total, matching the per-evidence counts above exactly.`;
 
   const json = await callClaude(prompt, { maxTokens: 8000 });
-  if (!json.results || !Array.isArray(json.results)) throw new Error("Could not generate practice problems.");
+  if (!json.results || !Array.isArray(json.results)) throw new Error("Could not generate problems for this target.");
   return json.results;
 }
 
-async function regenerateOne(lesson, currentType, feedback) {
+async function regenerateTargetItem(target, evidenceItem, currentType, feedback) {
   const typeInfo = TYPE_MAP[currentType];
   const feedbackBlock = feedback && feedback.trim()
     ? `\nThe teacher requested this specific change, follow it carefully: ${feedback.trim()}\n`
     : "";
-  const prompt = `Write one original CAASPP style practice problem for California Integrated Math 3.
+  const prompt = `Write one original CAASPP style item directly from an official target specification.
 
-Lesson: ${lesson.num} ${lesson.title}
-CA Common Core standard: ${lesson.standard}
-Use the "${typeInfo.label}" format (${typeInfo.desc}).
+${buildTargetContext(target, [evidenceItem])}
+
+Use the "${typeInfo.label}" format (${typeInfo.desc}) if it is on the allowed list above; if it genuinely is not allowed for this target, pick the closest allowed format instead and say so isn't needed, just produce the best allowed item.
 ${feedbackBlock}
 ${SCHEMA_NOTE}
 
-Return ONLY: {"item_type": "${currentType}", "stem": "...", "data": {...}}`;
+Return ONLY: {"item_type": "...", "stem": "...", "data": {...}}`;
   const json = await callClaude(prompt, { maxTokens: 2000 });
   if (!json.data) throw new Error("Could not regenerate this problem.");
   return json;
 }
 
-export default function TopicPracticeGenerator() {
-  const [selected, setSelected] = useState([]);
+export default function TargetGenerator() {
+  const [targetLetter, setTargetLetter] = useState(TARGET_SPECS[0]?.letter || "A");
+  const [selectedEvidence, setSelectedEvidence] = useState([]);
   const [counts, setCounts] = useState({});
-  const [search, setSearch] = useState("");
   const [feedback, setFeedback] = useState("");
   const [useFreeBank, setUseFreeBank] = useState(true);
   const [problems, setProblems] = useState(null);
@@ -74,25 +118,26 @@ export default function TopicPracticeGenerator() {
   const [showAnswer, setShowAnswer] = useState(false);
   const printRef = useRef(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return ALL_LESSONS;
-    return ALL_LESSONS.filter((l) => (l.num + " " + l.title + " " + l.standard).toLowerCase().includes(q));
-  }, [search]);
+  const target = useMemo(() => TARGET_SPECS.find((t) => t.letter === targetLetter), [targetLetter]);
 
-  function toggle(lesson) {
-    setSelected((s) => {
-      const exists = s.find((x) => x.num === lesson.num);
-      if (exists) return s.filter((x) => x.num !== lesson.num);
-      return [...s, lesson];
+  function onTargetChange(letter) {
+    setTargetLetter(letter);
+    setSelectedEvidence([]);
+    setCounts({});
+  }
+
+  function toggleEvidence(num) {
+    setSelectedEvidence((s) => {
+      if (s.includes(num)) return s.filter((n) => n !== num);
+      return [...s, num];
     });
     setCounts((c) => {
-      if (c[lesson.num] != null) {
+      if (c[num] != null) {
         const next = { ...c };
-        delete next[lesson.num];
+        delete next[num];
         return next;
       }
-      return { ...c, [lesson.num]: 3 };
+      return { ...c, [num]: 3 };
     });
   }
 
@@ -101,51 +146,59 @@ export default function TopicPracticeGenerator() {
     setCounts((c) => ({ ...c, [num]: n }));
   }
 
-  const totalCount = selected.reduce((sum, l) => sum + (counts[l.num] || 3), 0);
+  const totalCount = selectedEvidence.reduce((sum, n) => sum + (counts[n] || 3), 0);
   const freeCount = useFreeBank
-    ? selected.reduce((sum, l) => sum + Math.min(counts[l.num] || 3, bankCount(l.num)), 0)
+    ? selectedEvidence.reduce((sum, n) => sum + Math.min(counts[n] || 3, targetBankCount(targetLetter + n)), 0)
     : 0;
   const liveCount = totalCount - freeCount;
 
-  function lessonByNum(num) {
-    return selected.find((l) => l.num === num) || ALL_LESSONS.find((l) => l.num === num);
+  function evidenceByNum(num) {
+    return target.evidence.find((e) => e.num === num);
   }
 
   async function generate() {
-    if (!selected.length) {
-      setError("Pick at least one lesson first.");
+    if (!selectedEvidence.length) {
+      setError("Pick at least one Evidence Required statement first.");
       return;
     }
     setError("");
     setBusy(true);
     try {
       const fromBank = [];
-      const needLive = [];
+      const needLiveEvidence = [];
 
-      selected.forEach((l) => {
-        const wanted = counts[l.num] || 3;
+      selectedEvidence.forEach((num) => {
+        const wanted = counts[num] || 3;
+        const evidenceKey = targetLetter + num;
         if (useFreeBank) {
-          const picked = pickFromBank(l.num, wanted);
-          picked.forEach((p) => fromBank.push({ lessonNum: l.num, type: p.type, stem: p.stem, data: p.data }));
+          const picked = pickFromTargetBank(evidenceKey, wanted);
+          picked.forEach((p) => fromBank.push({ evidenceNum: num, type: p.type, stem: p.stem, data: p.data }));
           const remaining = wanted - picked.length;
-          if (remaining > 0) needLive.push({ ...l, count: remaining });
+          if (remaining > 0) needLiveEvidence.push(evidenceByNum(num));
         } else {
-          needLive.push({ ...l, count: wanted });
+          needLiveEvidence.push(evidenceByNum(num));
         }
       });
 
+      const liveCounts = {};
+      needLiveEvidence.forEach((e) => {
+        const already = fromBank.filter((p) => p.evidenceNum === e.num).length;
+        liveCounts[e.num] = Math.max(0, (counts[e.num] || 3) - already);
+      });
+      const stillNeeded = needLiveEvidence.filter((e) => liveCounts[e.num] > 0);
+
       let fromLive = [];
-      if (needLive.length) {
-        const liveTotal = needLive.reduce((sum, l) => sum + l.count, 0);
-        setBusyLabel(`Writing ${liveTotal} practice problem${liveTotal > 1 ? "s" : ""}${fromBank.length ? " (the rest are free, built-in problems)" : ""}...`);
-        const results = await generatePracticeSet(needLive, feedback);
-        fromLive = results.map((r) => ({ lessonNum: r.lesson_num, type: r.item_type, stem: r.stem, data: r.data || {} }));
+      if (stillNeeded.length) {
+        const liveTotal = stillNeeded.reduce((sum, e) => sum + liveCounts[e.num], 0);
+        setBusyLabel(`Writing ${liveTotal} problem${liveTotal > 1 ? "s" : ""}${fromBank.length ? " (the rest are free, built-in problems)" : ""}...`);
+        const results = await generateTargetSet(target, stillNeeded, liveCounts, feedback);
+        fromLive = results.map((r) => ({ evidenceNum: r.evidence_num, type: r.item_type, stem: r.stem, data: r.data || {} }));
       }
 
       const merged = [...fromBank, ...fromLive].map((p, i) => ({ id: i, ...p, feedback: "", loading: false }));
       setProblems(merged);
     } catch (e) {
-      setError(e.message || "Could not generate practice problems.");
+      setError(e.message || "Could not generate problems.");
     } finally {
       setBusy(false);
       setBusyLabel("");
@@ -156,8 +209,8 @@ export default function TopicPracticeGenerator() {
     setProblems((ps) => ps.map((p) => (p.id === id ? { ...p, loading: true } : p)));
     try {
       const problem = problems.find((p) => p.id === id);
-      const lesson = lessonByNum(problem?.lessonNum) || selected[0];
-      const r = await regenerateOne(lesson, newType, fb);
+      const evidenceItem = evidenceByNum(problem?.evidenceNum) || target.evidence[0];
+      const r = await regenerateTargetItem(target, evidenceItem, newType, fb);
       setProblems((ps) => ps.map((p) => (p.id === id ? { ...p, type: r.item_type, stem: r.stem, data: r.data || {}, loading: false } : p)));
     } catch (e) {
       setError(e.message || "Could not regenerate that problem.");
@@ -169,6 +222,10 @@ export default function TopicPracticeGenerator() {
     setProblems((ps) => ps.filter((p) => p.id !== id));
   }
 
+  function exportTitle() {
+    return `Target ${targetLetter}${selectedEvidence.length ? " (" + selectedEvidence.map((n) => targetLetter + n).join(", ") + ")" : ""}`;
+  }
+
   function downloadCanvasQuiz() {
     setError("");
     try {
@@ -177,11 +234,6 @@ export default function TopicPracticeGenerator() {
     } catch (e) {
       setError("Could not build the Canvas quiz file: " + (e.message || e));
     }
-  }
-
-  function exportTitle() {
-    if (selected.length === 1) return `${selected[0].num} ${selected[0].title}`;
-    return `Practice Set (${selected.map((l) => l.num).join(", ")})`;
   }
 
   function buildExportHTML() {
@@ -223,6 +275,8 @@ export default function TopicPracticeGenerator() {
     }
   }
 
+  if (!target) return null;
+
   return (
     <div style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif", color: "#1A1A2E", maxWidth: 980, margin: "0 auto", padding: "0 16px 60px" }}>
       <style>{`
@@ -233,9 +287,9 @@ export default function TopicPracticeGenerator() {
       `}</style>
       <div className="no-print" style={{ background: C.navy, color: "#fff", padding: "22px 24px", borderRadius: 12, margin: "20px 0" }}>
         <div style={{ fontSize: 12, letterSpacing: 1, fontWeight: 700, color: "#9FC3D9" }}>CAASPP DEEP DIVE TOOLKIT</div>
-        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", marginTop: 4 }}>Topic Practice Generator</div>
+        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", marginTop: 4 }}>Target Generator</div>
         <div style={{ fontSize: 14, color: "#CADCFC", marginTop: 4 }}>
-          Pick one or more lessons from the Integrated 3 scope and sequence, get original CAASPP style practice problems for them.
+          Pick a Claim 1 target, then one or more Evidence Required statements, straight from the official Smarter Balanced target specifications.
         </div>
       </div>
 
@@ -246,44 +300,49 @@ export default function TopicPracticeGenerator() {
       )}
 
       <div className="no-print" style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 20, background: "#fff" }}>
-        <label style={{ fontSize: 12.5, fontWeight: 700, color: C.navy, display: "block", marginBottom: 6 }}>
-          Lessons or standards (pick one or more)
+        <label style={{ fontSize: 12.5, fontWeight: 700, color: C.navy, display: "block", marginBottom: 6 }}>Target</label>
+        <select value={targetLetter} onChange={(e) => onTargetChange(e.target.value)} style={targetSelectStyle}>
+          {TARGET_SPECS.map((t) => (
+            <option key={t.letter} value={t.letter}>{t.letter}: {t.title}</option>
+          ))}
+        </select>
+
+        <div style={{ marginTop: 10, fontSize: 12.5, color: C.muted }}>
+          Domain: <strong style={{ color: C.teal }}>{target.domain}</strong>
+          {"  \u00b7  "}Standards: <strong style={{ color: C.teal }}>{(target.standards || []).map((s) => s.code).join(", ")}</strong>
+        </div>
+
+        <label style={{ fontSize: 12.5, fontWeight: 700, color: C.navy, display: "block", marginTop: 16, marginBottom: 6 }}>
+          Evidence Required (pick one or more)
         </label>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by lesson name or standard code, e.g. radical, G-SRT.10"
-          style={{ ...selectStyle, marginBottom: 10 }}
-        />
-        <div style={{ maxHeight: 220, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
-          {filtered.map((l) => {
-            const checked = !!selected.find((x) => x.num === l.num);
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8 }}>
+          {target.evidence.map((e) => {
+            const checked = selectedEvidence.includes(e.num);
             return (
               <div
-                key={l.num}
-                onClick={() => toggle(l)}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer", background: checked ? "#EAF4F1" : "#fff", borderBottom: `1px solid ${C.border}` }}
+                key={e.num}
+                onClick={() => toggleEvidence(e.num)}
+                style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", cursor: "pointer", background: checked ? "#EAF4F1" : "#fff", borderBottom: `1px solid ${C.border}` }}
               >
-                <input type="checkbox" checked={checked} readOnly />
-                <span style={{ fontWeight: 700, color: C.teal, minWidth: 44 }}>{l.num}</span>
-                <span style={{ fontSize: 13.5, flex: 1 }}>{l.title}</span>
-                <span style={{ fontSize: 12, color: C.muted }}>{l.standard}</span>
+                <input type="checkbox" checked={checked} readOnly style={{ marginTop: 3 }} />
+                <span style={{ fontWeight: 700, color: C.teal, minWidth: 34 }}>{targetLetter}{e.num}</span>
+                <span style={{ fontSize: 13.5, flex: 1 }}>{e.text}</span>
               </div>
             );
           })}
         </div>
-        {selected.length > 0 && (
+
+        {selectedEvidence.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 12.5, fontWeight: 700, color: C.navy, display: "block", marginBottom: 8 }}>
-              Problems per lesson
+              Problems per evidence statement
             </label>
-            {selected.map((l) => {
-              const avail = bankCount(l.num);
+            {selectedEvidence.map((num) => {
+              const avail = targetBankCount(targetLetter + num);
               return (
-                <div key={l.num} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
-                  <span style={{ fontWeight: 700, color: C.teal, minWidth: 44, fontSize: 13.5 }}>{l.num}</span>
-                  <span style={{ fontSize: 13.5, flex: 1 }}>{l.title}</span>
+                <div key={num} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontWeight: 700, color: C.teal, minWidth: 34, fontSize: 13.5 }}>{targetLetter}{num}</span>
+                  <span style={{ fontSize: 13, flex: 1, color: C.muted }}>{evidenceByNum(num)?.text}</span>
                   {avail > 0 && (
                     <span style={{ fontSize: 11.5, color: C.mint, fontWeight: 700 }}>{avail} free available</span>
                   )}
@@ -291,8 +350,8 @@ export default function TopicPracticeGenerator() {
                     type="number"
                     min={1}
                     max={15}
-                    value={counts[l.num] ?? 3}
-                    onChange={(e) => setCount(l.num, e.target.value)}
+                    value={counts[num] ?? 3}
+                    onChange={(e) => setCount(num, e.target.value)}
                     style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1.5px solid ${C.border}`, fontSize: 13, textAlign: "center" }}
                   />
                 </div>
@@ -316,10 +375,10 @@ export default function TopicPracticeGenerator() {
         <div style={{ display: "flex", gap: 20, alignItems: "flex-end", marginTop: 16, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 260px" }}>
             <label style={{ fontSize: 12.5, fontWeight: 700, color: C.navy, display: "block", marginBottom: 6 }}>Anything specific? (optional)</label>
-            <input type="text" value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="e.g. include a real-world context, keep numbers whole" style={{ ...selectStyle, width: "100%" }} />
+            <input type="text" value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="e.g. include a real-world context, keep numbers whole" style={{ ...targetSelectStyle, width: "100%" }} />
           </div>
-          <button onClick={generate} disabled={busy} style={primaryBtn}>
-            {busy ? (busyLabel || "Working...") : "Generate practice set"}
+          <button onClick={generate} disabled={busy} style={targetPrimaryBtn}>
+            {busy ? (busyLabel || "Working...") : "Generate problem set"}
           </button>
         </div>
       </div>
@@ -344,7 +403,7 @@ export default function TopicPracticeGenerator() {
             </label>
           </div>
           <div className="no-print" style={{ fontSize: 12, color: C.muted, marginBottom: 14, marginTop: -6 }}>
-            If Print doesn't open a dialog, use Ctrl+P or Cmd+P instead, it uses this same layout. The Canvas file auto-grades Multiple Choice, Multi Select, Equation/Numeric, and Matching Tables; other formats import as manually-graded questions with the answer included for reference.
+            If Print doesn't open a dialog, use Ctrl+P or Cmd+P instead. The Canvas file auto-grades Multiple Choice, Multi Select, Equation/Numeric, and Matching Tables; other formats import as manually-graded questions.
           </div>
 
           {/* On-screen preview, respects the answer key toggle */}
@@ -355,8 +414,8 @@ export default function TopicPracticeGenerator() {
                   <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: C.lightbg, color: C.teal, border: `1px solid ${C.border}` }}>
                     {TYPE_MAP[p.type] ? TYPE_MAP[p.type].label : p.type}
                   </span>
-                  {selected.length > 1 && p.lessonNum && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Lesson {p.lessonNum}</span>
+                  {p.evidenceNum && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Evidence {targetLetter}{p.evidenceNum}</span>
                   )}
                   <select
                     value={p.type}
@@ -388,7 +447,7 @@ export default function TopicPracticeGenerator() {
                       rows={2}
                       style={{ flex: "1 1 320px", minWidth: 260, padding: 10, borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 13.5, resize: "vertical", boxSizing: "border-box" }}
                     />
-                    <button onClick={() => regenerate(p.id, p.type, p.feedback)} disabled={p.loading} style={{ ...primaryBtn, background: C.teal }}>
+                    <button onClick={() => regenerate(p.id, p.type, p.feedback)} disabled={p.loading} style={{ ...targetPrimaryBtn, background: C.teal }}>
                       {p.loading ? "Regenerating..." : "Regenerate"}
                     </button>
                   </div>
@@ -425,5 +484,5 @@ export default function TopicPracticeGenerator() {
   );
 }
 
-const selectStyle = { width: "100%", padding: "9px 10px", borderRadius: 8, border: "1.5px solid #DCE6EA", fontSize: 14, boxSizing: "border-box" };
-const primaryBtn = { padding: "11px 20px", borderRadius: 10, border: "none", background: "#065A82", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" };
+const targetSelectStyle = { width: "100%", padding: "9px 10px", borderRadius: 8, border: "1.5px solid #DCE6EA", fontSize: 14, boxSizing: "border-box" };
+const targetPrimaryBtn = { padding: "11px 20px", borderRadius: 10, border: "none", background: "#065A82", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" };

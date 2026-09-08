@@ -18,7 +18,6 @@ export default function WorksheetConverter() {
   const [rawText, setRawText] = useState("");
   const [pdfFile, setPdfFile] = useState(null); // { name }
   const [pdfBuffer, setPdfBuffer] = useState(null); // File object, read lazily on convert
-  const [parsedProblems, setParsedProblems] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
@@ -70,7 +69,7 @@ export default function WorksheetConverter() {
     }
   };
 
-  const parseWorksheet = useCallback(async () => {
+  const startConversion = useCallback(async () => {
     setError("");
     if (!rawText.trim() && !pdfBuffer) {
       setError("Paste, or upload a worksheet first.");
@@ -88,29 +87,7 @@ export default function WorksheetConverter() {
         if (!probs) probs = await splitWithAI(rawText);
       }
       if (!probs.length) throw new Error("No problems were found.");
-      setParsedProblems(probs.map((text, i) => ({ id: i, text })));
-      setStage("parsed");
-    } catch (e) {
-      setError(e.message || "Something went wrong reading the worksheet.");
-    } finally {
-      setBusy(false);
-      setBusyLabel("");
-    }
-  }, [rawText, pdfBuffer]);
 
-  const removeParsedProblem = (id) => {
-    setParsedProblems((ps) => ps.filter((p) => p.id !== id));
-  };
-
-  const convertParsed = useCallback(async () => {
-    if (!parsedProblems.length) {
-      setError("Every problem was removed, nothing left to convert.");
-      return;
-    }
-    setError("");
-    setBusy(true);
-    try {
-      const probs = parsedProblems.map((p) => p.text);
       setBusyLabel(`Analyzing ${probs.length} problem${probs.length > 1 ? "s" : ""} and recommending CAASPP formats...`);
       const groups = await convertAll(probs);
 
@@ -143,7 +120,7 @@ export default function WorksheetConverter() {
       setBusy(false);
       setBusyLabel("");
     }
-  }, [parsedProblems]);
+  }, [rawText, pdfBuffer]);
 
   const deleteQuestion = (id) => {
     setQuestions((qs) => qs.filter((q) => q.id !== id));
@@ -227,7 +204,6 @@ export default function WorksheetConverter() {
     setRawText("");
     setPdfFile(null);
     setPdfBuffer(null);
-    setParsedProblems([]);
     setQuestions([]);
     setError("");
   };
@@ -326,54 +302,12 @@ export default function WorksheetConverter() {
           </div>
 
           <button
-            onClick={parseWorksheet}
+            onClick={startConversion}
             disabled={busy}
             style={{ marginTop: 20, padding: "12px 22px", borderRadius: 10, border: "none", background: C.deep, color: C.white, fontWeight: 700, fontSize: 15, cursor: "pointer" }}
           >
-            {busy ? busyLabel || "Working..." : "Split into problems"}
+            {busy ? busyLabel || "Working..." : "Convert to CAASPP format"}
           </button>
-        </div>
-      )}
-
-      {/* Stage: Parsed problems, review and adjust the count before converting */}
-      {stage === "parsed" && (
-        <div className="no-print">
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 14 }}>
-            {parsedProblems.length} problem{parsedProblems.length !== 1 ? "s" : ""} detected. Remove any you don't want converted, then continue.
-          </div>
-
-          {parsedProblems.map((p, i) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10, background: C.white }}>
-              <span style={{ fontWeight: 700, color: C.teal, minWidth: 22 }}>{i + 1}.</span>
-              <div style={{ flex: 1, fontSize: 14, whiteSpace: "pre-line" }}>{p.text}</div>
-              <button
-                onClick={() => removeParsedProblem(p.id)}
-                title="Remove this problem"
-                style={{ border: "none", background: "transparent", color: "#B33", fontWeight: 700, fontSize: 13, cursor: "pointer", padding: "2px 8px" }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-
-          {!parsedProblems.length && (
-            <div style={{ fontSize: 14, color: C.muted, fontStyle: "italic", marginBottom: 14 }}>
-              Every problem was removed. Go back to add the worksheet again, or continue with zero (nothing to convert).
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-            <button onClick={() => setStage("input")} style={{ padding: "10px 18px", borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, color: C.navy, fontWeight: 700, cursor: "pointer" }}>
-              Back
-            </button>
-            <button
-              onClick={convertParsed}
-              disabled={busy || !parsedProblems.length}
-              style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: C.deep, color: C.white, fontWeight: 700, cursor: "pointer" }}
-            >
-              {busy ? (busyLabel || "Working...") : `Convert ${parsedProblems.length} problem${parsedProblems.length !== 1 ? "s" : ""} to CAASPP format`}
-            </button>
-          </div>
         </div>
       )}
 

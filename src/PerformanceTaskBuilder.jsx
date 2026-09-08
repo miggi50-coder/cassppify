@@ -5,6 +5,7 @@ import { ALL_LESSONS } from "./topics";
 function RubricTask({ task, showAnswer }) {
   const points = task.rubric_points === 3 ? 3 : 2;
   const criteria = task.rubric_criteria || [];
+  const exemplars = task.exemplars || [];
   return (
     <div>
       <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>{renderMathText(task.stem)}</div>
@@ -19,9 +20,14 @@ function RubricTask({ task, showAnswer }) {
           </div>
         ))}
       </div>
-      {showAnswer && task.sample_response && (
-        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#FFF7E6", border: "1px solid #F0D9A0", fontSize: 13.5 }}>
-          <strong>Sample full credit response: </strong>{renderMathText(task.sample_response)}
+      {showAnswer && exemplars.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, marginBottom: 6 }}>EXEMPLAR RESPONSES AT EACH SCORE LEVEL</div>
+          {[...exemplars].sort((a, b) => b.score - a.score).map((ex, i) => (
+            <div key={i} style={{ marginBottom: 8, padding: "10px 14px", borderRadius: 8, background: "#FFF7E6", border: "1px solid #F0D9A0", fontSize: 13.5 }}>
+              <strong>{ex.score} point{ex.score === 1 ? "" : "s"}: </strong>{renderMathText(ex.response)}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -115,7 +121,9 @@ ${typesBlock()}
 ${SCHEMA_NOTE}
 
 For the final extended response question only, instead of the schemas above, use this data shape:
-{"rubric_points": 2 or 3, "rubric_criteria": [{"score": 0, "description": "..."}, {"score": 1, "description": "..."}, ...up to rubric_points], "sample_response": "a model full credit response"}
+{"rubric_points": 2 or 3, "rubric_criteria": [{"score": 0, "description": "..."}, {"score": 1, "description": "..."}, ...up to rubric_points], "exemplars": [{"score": 0, "response": "an example response that would genuinely earn 0 points"}, {"score": 1, "response": "an example response that would genuinely earn exactly 1 point, showing what a partial-credit response actually looks like, not a full-credit response with something crossed out"}, ...one exemplar for every score value from 0 up to rubric_points]}
+
+Each exemplar response must be a realistic, distinct student response for that exact score, matching what its own rubric_criteria description says a response at that score looks like. Write these as if an actual 11th grader wrote them under real test conditions, not as polished textbook answers. Use natural student phrasing and voice, for example "I set the two equations equal to each other and got..." rather than formal expository prose. Show their work the way a student actually writes it out step by step, not a cleaned-up final derivation. A 1-point exemplar should look like genuine partial student work, including a real, specific gap or error a student would actually make (a dropped sign, an incomplete justification, stopping partway through the reasoning), not a shortened or lightly-redacted version of the full-credit answer. The 0-point exemplar should look like a real but unsuccessful attempt, not a blank or an obviously nonsensical answer. Write actual response text a student might submit, not a description of what the response contains.
 
 Return ONLY:
 {
@@ -125,7 +133,7 @@ Return ONLY:
   "tasks": [
     {"item_type": "...", "stem": "...", "data": {...}},
     ...,
-    {"item_type": "extended_response", "stem": "...", "data": {"rubric_points": 2, "rubric_criteria": [...], "sample_response": "..."}}
+    {"item_type": "extended_response", "stem": "...", "data": {"rubric_points": 2, "rubric_criteria": [...], "exemplars": [...]}}
   ]
 }
 The tasks array must have exactly ${numQuestions} entries, with the extended_response one last.`;

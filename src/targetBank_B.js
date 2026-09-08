@@ -1,0 +1,80 @@
+// Static practice bank -- Target B: Use properties of rational and
+// irrational numbers.
+// 5 variations of each allowed item type (hot_spot, matching_tables,
+// multi_select -- this target does NOT allow multiple_choice or
+// equation_numeric per its official specification) per Evidence Required
+// statement. Combined into the full TARGET_BANK object by targetBank.js.
+
+export const TARGET_BANK_B = {
+  "1": [
+    { type: "multi_select", stem: "Which of the following are examples of an addition problem with an irrational sum? Select all that apply.", data: { options: [{id:"A",text:"sqrt{2} + 3"},{id:"B",text:"frac{1}{2} + frac{1}{3}"},{id:"C",text:"pi + 1"},{id:"D",text:"sqrt{4} + 1"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following are examples of a multiplication problem with a rational product? Select all that apply.", data: { options: [{id:"A",text:"2 \u00d7 sqrt{9}"},{id:"B",text:"3 \u00d7 sqrt{5}"},{id:"C",text:"frac{1}{2} \u00d7 4"},{id:"D",text:"sqrt{2} \u00d7 sqrt{3}"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following are examples of an addition problem with a rational sum? Select all that apply.", data: { options: [{id:"A",text:"sqrt{16} + 5"},{id:"B",text:"sqrt{2} + sqrt{3}"},{id:"C",text:"frac{3}{4} + frac{1}{4}"},{id:"D",text:"pi + 2"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following are examples of a multiplication problem with an irrational product? Select all that apply.", data: { options: [{id:"A",text:"5 \u00d7 sqrt{7}"},{id:"B",text:"0 \u00d7 sqrt{7}"},{id:"C",text:"sqrt{2} \u00d7 4"},{id:"D",text:"sqrt{9} \u00d7 3"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following are examples of an addition problem with an irrational sum? Select all that apply.", data: { options: [{id:"A",text:"6 + sqrt{2}"},{id:"B",text:"sqrt{25} + 1"},{id:"C",text:"3 + pi"},{id:"D",text:"frac{1}{3} + frac{2}{3}"}], correctIds: ["A","C"] } },
+    { type: "matching_tables", stem: "Match each expression to whether its value is rational or irrational.", data: { rows: ["sqrt{2}+3","frac{1}{2}+frac{1}{4}","sqrt{9}+1"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each expression to whether its value is rational or irrational.", data: { rows: ["3\u00d7sqrt{5}","2\u00d7sqrt{4}","frac{1}{3}\u00d74"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each expression to whether its value is rational or irrational.", data: { rows: ["pi+2","sqrt{16}+3","sqrt{2}+sqrt{3}"], columns: ["Rational","Irrational"], correct: [1,0,1] } },
+    { type: "matching_tables", stem: "Match each expression to whether its value is rational or irrational.", data: { rows: ["5\u00d7sqrt{7}","sqrt{25}\u00d72","0\u00d7sqrt{3}"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each expression to whether its value is rational or irrational.", data: { rows: ["frac{2}{3}+frac{1}{3}","6+sqrt{10}","sqrt{36}\u00d75"], columns: ["Rational","Irrational"], correct: [0,1,0] } },
+    { type: "hot_spot", stem: "Mark the approximate location of sqrt{2}+1 on the number line.", data: { lineMin: 0, lineMax: 5, correctValue: 2.41 } },
+    { type: "hot_spot", stem: "Mark the location of 2\u00d7sqrt{9} on the number line.", data: { lineMin: 0, lineMax: 10, correctValue: 6 } },
+    { type: "hot_spot", stem: "Mark the approximate location of pi+2 on the number line.", data: { lineMin: 0, lineMax: 10, correctValue: 5.14 } },
+    { type: "hot_spot", stem: "Mark the location of frac{1}{2}+frac{1}{4} on the number line.", data: { lineMin: 0, lineMax: 2, correctValue: 0.75 } },
+    { type: "hot_spot", stem: "Mark the location of sqrt{4}\u00d73 on the number line.", data: { lineMin: 0, lineMax: 10, correctValue: 6 } },
+  ],
+
+  "2": [
+    { type: "multi_select", stem: "Which of the following sums are irrational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{5}+2"},{id:"B",text:"frac{3}{5}+frac{1}{5}"},{id:"C",text:"4+pi"},{id:"D",text:"sqrt{49}+3"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following sums are rational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{100}+2"},{id:"B",text:"sqrt{3}+1"},{id:"C",text:"frac{1}{4}+frac{3}{4}"},{id:"D",text:"pi+5"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following sums are irrational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{2}+sqrt{3}"},{id:"B",text:"sqrt{81}+9"},{id:"C",text:"e+1"},{id:"D",text:"frac{2}{7}+frac{5}{7}"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following sums are rational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{64}+sqrt{9}"},{id:"B",text:"sqrt{6}+1"},{id:"C",text:"frac{5}{6}+frac{1}{6}"},{id:"D",text:"3+sqrt{10}"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following sums are irrational? Select all that apply.", data: { options: [{id:"A",text:"7+sqrt{11}"},{id:"B",text:"sqrt{144}+1"},{id:"C",text:"sqrt{5}+8"},{id:"D",text:"frac{1}{2}+frac{1}{2}"}], correctIds: ["A","C"] } },
+    { type: "matching_tables", stem: "Match each sum to whether it is rational or irrational.", data: { rows: ["sqrt{5}+2","frac{3}{5}+frac{1}{5}","sqrt{49}+3"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each sum to whether it is rational or irrational.", data: { rows: ["sqrt{100}+2","sqrt{3}+1","frac{1}{4}+frac{3}{4}"], columns: ["Rational","Irrational"], correct: [0,1,0] } },
+    { type: "matching_tables", stem: "Match each sum to whether it is rational or irrational.", data: { rows: ["sqrt{2}+sqrt{3}","sqrt{81}+9","e+1"], columns: ["Rational","Irrational"], correct: [1,0,1] } },
+    { type: "matching_tables", stem: "Match each sum to whether it is rational or irrational.", data: { rows: ["sqrt{64}+sqrt{9}","sqrt{6}+1","frac{5}{6}+frac{1}{6}"], columns: ["Rational","Irrational"], correct: [0,1,0] } },
+    { type: "matching_tables", stem: "Match each sum to whether it is rational or irrational.", data: { rows: ["7+sqrt{11}","sqrt{144}+1","frac{1}{2}+frac{1}{2}"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "hot_spot", stem: "Mark the approximate location of sqrt{5}+2 on the number line.", data: { lineMin: 0, lineMax: 8, correctValue: 4.24 } },
+    { type: "hot_spot", stem: "Mark the location of sqrt{100}+2 on the number line.", data: { lineMin: 5, lineMax: 15, correctValue: 12 } },
+    { type: "hot_spot", stem: "Mark the approximate location of sqrt{2}+sqrt{3} on the number line.", data: { lineMin: 0, lineMax: 6, correctValue: 3.15 } },
+    { type: "hot_spot", stem: "Mark the location of frac{5}{6}+frac{1}{6} on the number line.", data: { lineMin: 0, lineMax: 2, correctValue: 1 } },
+    { type: "hot_spot", stem: "Mark the approximate location of 7+sqrt{11} on the number line.", data: { lineMin: 5, lineMax: 15, correctValue: 10.32 } },
+  ],
+
+  "3": [
+    { type: "multi_select", stem: "Which of the following products are irrational? Select all that apply.", data: { options: [{id:"A",text:"3 \u00d7 sqrt{5}"},{id:"B",text:"frac{1}{2} \u00d7 6"},{id:"C",text:"sqrt{7} \u00d7 2"},{id:"D",text:"sqrt{16} \u00d7 5"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following products are rational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{25} \u00d7 3"},{id:"B",text:"sqrt{2} \u00d7 5"},{id:"C",text:"frac{2}{3} \u00d7 6"},{id:"D",text:"pi \u00d7 2"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following products are irrational? Select all that apply.", data: { options: [{id:"A",text:"4 \u00d7 sqrt{3}"},{id:"B",text:"0 \u00d7 sqrt{5}"},{id:"C",text:"sqrt{6} \u00d7 1"},{id:"D",text:"sqrt{81} \u00d7 2"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following products are rational? Select all that apply.", data: { options: [{id:"A",text:"sqrt{9} \u00d7 sqrt{4}"},{id:"B",text:"sqrt{10} \u00d7 3"},{id:"C",text:"frac{3}{4} \u00d7 8"},{id:"D",text:"5 \u00d7 sqrt{2}"}], correctIds: ["A","C"] } },
+    { type: "multi_select", stem: "Which of the following products are irrational? Select all that apply.", data: { options: [{id:"A",text:"6 \u00d7 sqrt{7}"},{id:"B",text:"sqrt{100} \u00d7 4"},{id:"C",text:"sqrt{5} \u00d7 3"},{id:"D",text:"frac{1}{5} \u00d7 10"}], correctIds: ["A","C"] } },
+    { type: "matching_tables", stem: "Match each product to whether it is rational or irrational.", data: { rows: ["3\u00d7sqrt{5}","frac{1}{2}\u00d76","sqrt{16}\u00d75"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each product to whether it is rational or irrational.", data: { rows: ["sqrt{25}\u00d73","sqrt{2}\u00d75","frac{2}{3}\u00d76"], columns: ["Rational","Irrational"], correct: [0,1,0] } },
+    { type: "matching_tables", stem: "Match each product to whether it is rational or irrational.", data: { rows: ["4\u00d7sqrt{3}","0\u00d7sqrt{5}","sqrt{81}\u00d72"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "matching_tables", stem: "Match each product to whether it is rational or irrational.", data: { rows: ["sqrt{9}\u00d7sqrt{4}","sqrt{10}\u00d73","frac{3}{4}\u00d78"], columns: ["Rational","Irrational"], correct: [0,1,0] } },
+    { type: "matching_tables", stem: "Match each product to whether it is rational or irrational.", data: { rows: ["6\u00d7sqrt{7}","sqrt{100}\u00d74","frac{1}{5}\u00d710"], columns: ["Rational","Irrational"], correct: [1,0,0] } },
+    { type: "hot_spot", stem: "Mark the approximate location of 3\u00d7sqrt{5} on the number line.", data: { lineMin: 0, lineMax: 10, correctValue: 6.71 } },
+    { type: "hot_spot", stem: "Mark the location of sqrt{25}\u00d73 on the number line.", data: { lineMin: 10, lineMax: 20, correctValue: 15 } },
+    { type: "hot_spot", stem: "Mark the location of sqrt{16}\u00d75 on the number line.", data: { lineMin: 10, lineMax: 25, correctValue: 20 } },
+    { type: "hot_spot", stem: "Mark the location of frac{2}{3}\u00d76 on the number line.", data: { lineMin: 0, lineMax: 8, correctValue: 4 } },
+    { type: "hot_spot", stem: "Mark the approximate location of 6\u00d7sqrt{7} on the number line.", data: { lineMin: 10, lineMax: 20, correctValue: 15.87 } },
+  ],
+
+  "4": [
+    { type: "multi_select", stem: "Which of the following general statements about rational and irrational numbers are always true? Select all that apply.", data: { options: [{id:"A",text:"The sum of two rational numbers is always rational."},{id:"B",text:"The sum of a rational number and an irrational number is always irrational."},{id:"C",text:"The sum of two irrational numbers is always irrational."},{id:"D",text:"The product of two rational numbers is always rational."}], correctIds: ["A","B","D"] } },
+    { type: "multi_select", stem: "Which of the following general statements are always true? Select all that apply.", data: { options: [{id:"A",text:"The product of a nonzero rational number and an irrational number is always irrational."},{id:"B",text:"The product of zero and an irrational number is always irrational."},{id:"C",text:"The product of two irrational numbers is always irrational."},{id:"D",text:"The sum of two rational numbers is always rational."}], correctIds: ["A","D"] } },
+    { type: "multi_select", stem: "Which of the following statements are always true? Select all that apply.", data: { options: [{id:"A",text:"Adding a rational number to an irrational number always produces an irrational number."},{id:"B",text:"Multiplying two rational numbers always produces a rational number."},{id:"C",text:"Multiplying an irrational number by 0 always produces an irrational number."},{id:"D",text:"Adding two rational numbers always produces a rational number."}], correctIds: ["A","B","D"] } },
+    { type: "multi_select", stem: "Which of the following statements are true? Select all that apply.", data: { options: [{id:"A",text:"The sum of two irrational numbers can sometimes be rational."},{id:"B",text:"The product of two irrational numbers can sometimes be rational."},{id:"C",text:"The sum of a rational and an irrational number can sometimes be rational."},{id:"D",text:"The product of a nonzero rational and an irrational number can sometimes be rational."}], correctIds: ["A","B"] } },
+    { type: "multi_select", stem: "Which of the following statements are always true? Select all that apply.", data: { options: [{id:"A",text:"Rational numbers are closed under addition (the sum of two rationals is always rational)."},{id:"B",text:"Rational numbers are closed under multiplication (the product of two rationals is always rational)."},{id:"C",text:"Irrational numbers are closed under addition."},{id:"D",text:"The sum of a nonzero rational number and an irrational number is always irrational."}], correctIds: ["A","B","D"] } },
+    { type: "matching_tables", stem: "Match each combination to what its result must always be.", data: { rows: ["Rational + Rational","Rational + Irrational","Nonzero Rational \u00d7 Irrational"], columns: ["Always Rational","Always Irrational"], correct: [0,1,1] } },
+    { type: "matching_tables", stem: "Match each combination to what its result must be.", data: { rows: ["Rational \u00d7 Rational","Rational + Irrational","Irrational + Irrational"], columns: ["Always Rational","Always Irrational","Can be either"], correct: [0,1,2] } },
+    { type: "matching_tables", stem: "Match each combination to what its result must be.", data: { rows: ["Nonzero Rational \u00d7 Irrational","Irrational \u00d7 Irrational","Rational + Rational"], columns: ["Always Irrational","Can be either","Always Rational"], correct: [0,1,2] } },
+    { type: "matching_tables", stem: "Match each combination to what its result must be.", data: { rows: ["0 \u00d7 Irrational","Rational \u00d7 Rational","Rational + Irrational"], columns: ["Always Rational","Always Irrational"], correct: [0,0,1] } },
+    { type: "matching_tables", stem: "Match each combination to what its result must be.", data: { rows: ["Rational + Rational","Nonzero Rational \u00d7 Irrational","Irrational + Irrational"], columns: ["Always Rational","Always Irrational","Can be either"], correct: [0,1,2] } },
+    { type: "hot_spot", stem: "The general rule states that rational + irrational = irrational. Mark the location of 2+sqrt{3} to illustrate this.", data: { lineMin: 0, lineMax: 6, correctValue: 3.73 } },
+    { type: "hot_spot", stem: "The general rule states that nonzero rational \u00d7 irrational = irrational. Mark the location of 3\u00d7sqrt{2} to illustrate this.", data: { lineMin: 0, lineMax: 8, correctValue: 4.24 } },
+    { type: "hot_spot", stem: "The general rule states that rational + rational = rational. Mark the location of frac{3}{4}+frac{1}{2} to illustrate this.", data: { lineMin: 0, lineMax: 3, correctValue: 1.25 } },
+    { type: "hot_spot", stem: "The general rule states that rational \u00d7 rational = rational. Mark the location of frac{2}{5}\u00d710 to illustrate this.", data: { lineMin: 0, lineMax: 8, correctValue: 4 } },
+    { type: "hot_spot", stem: "To illustrate that zero times an irrational number is rational (equal to 0), mark the location of 0\u00d7sqrt{7} on the number line.", data: { lineMin: -5, lineMax: 5, correctValue: 0 } },
+  ],
+};
